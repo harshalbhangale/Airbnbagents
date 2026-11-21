@@ -5,6 +5,7 @@
   "type": "module",
   "exports": { ".": "./src/index.ts" },
   "dependencies": {
+    "@agentbnb/pricing": "workspace:*",
     "@agentbnb/privacy": "workspace:*",
     "@agentbnb/protocol": "workspace:*",
     "@agentbnb/demo-site": "workspace:*",

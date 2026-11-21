@@ -130,6 +130,33 @@ describe("host worker against the demo site", () => {
     expect(JSON.parse(readFileSync(join(dataDir, "policy.json"), "utf8")).capabilities["profile.read"].allowFields).toEqual(["name", "email"]);
   });
 
+  it("lists the host's price, and only for what is switched on and deliverable", async () => {
+    expect(worker.listing().offers).toEqual([{ kind: "automation_session", capability: "profile.read", pricePerSession: 20_000 }]);
+
+    worker.setOffers([{ kind: "automation_session", capability: "profile.read", pricePerSession: 50_000 }]);
+    expect(worker.listing().offers[0]).toMatchObject({ pricePerSession: 50_000 });
+    expect(JSON.parse(readFileSync(join(dataDir, "offers.json"), "utf8"))[0].pricePerSession).toBe(50_000);
+
+    for (const bad of [
+      [{ kind: "browser_node", pricePerHour: 2_400_000 }],
+      [{ kind: "automation_session", capability: "messages.read", pricePerSession: 1 }],
+      [{ kind: "automation_session", capability: "profile.delete", pricePerSession: 1 }],
+      [{ kind: "automation_session", capability: "profile.read", pricePerSession: 0 }],
+    ]) {
+      expect(() => worker.setOffers(bad)).toThrow();
+    }
+    expect(worker.offers[0]).toMatchObject({ pricePerSession: 50_000 });
+
+    const policy = worker.policy;
+    worker.setPolicy({ ...policy, capabilities: { "profile.read": { enabled: false, allowFields: [] } } });
+    expect(worker.listing().offers).toEqual([]);
+    worker.setPolicy(policy);
+  });
+
+  it("shows no earnings until a payment has actually settled", () => {
+    expect(worker.earnings()).toMatchObject({ payments: 0, gross: 0, host: 0 });
+  });
+
   it("stops immediately when the host hits the kill switch", async () => {
     worker.pause();
     const result = await rent("profile.read", { handle: "jordan-lee" });
@@ -148,6 +175,6 @@ describe("host worker against the demo site", () => {
 
     // The worker's key file is private to the host's user account.
     expect(statSync(join(dataDir, "worker-keys.json")).mode & 0o077).toBe(0);
-    expect(readdirSync(dataDir).sort()).toEqual(["audit.jsonl", "browser-profile", "policy.json", "worker-keys.json"]);
+    expect(readdirSync(dataDir).sort()).toEqual(["audit.jsonl", "browser-profile", "offers.json", "policy.json", "worker-keys.json"]);
   });
 });

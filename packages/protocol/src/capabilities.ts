@@ -21,8 +21,6 @@ export interface CapabilitySpec {
   id: string;
   title: string;
   description: string;
-  /** Price per completed task, in USD cents. */
-  priceCents: number;
   /** Strict schema: unknown keys are rejected, so there is no room for URLs, selectors or scripts. */
   input: z.ZodType<Record<string, unknown>>;
   fields: Readonly<Record<string, FieldSpec>>;
@@ -40,7 +38,6 @@ export const PROFILE_READ: CapabilitySpec = {
   title: "Read a member profile",
   description:
     "Returns structured fields from one member profile on the demo professional network, read through the host's signed-in session.",
-  priceCents: 2,
   input: z
     .object({
       handle: z.string().regex(/^[a-z0-9][a-z0-9-]{0,39}$/, "lowercase handle"),

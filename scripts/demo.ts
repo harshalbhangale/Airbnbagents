@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HOST_ACCOUNT, startDemoSite } from "../apps/demo-site/src/server.ts";
 import { HostWorker } from "../apps/worker/src/index.ts";
+import { formatUsd, unitPrice } from "../packages/pricing/src/index.ts";
 import { openResult, sealRequest } from "../packages/protocol/src/index.ts";
 
 const site = await startDemoSite();
@@ -48,7 +49,8 @@ try {
   console.log(`demo site       ${site.origin}`);
   console.log(`signed in       ${await worker.signIn(HOST_ACCOUNT.email, HOST_ACCOUNT.password)} (inside the isolated profile only)`);
   const offer = worker.listing().capabilities[0]!;
-  console.log(`offering        ${offer.id} at ${offer.priceCents}¢ per task`);
+  const price = unitPrice(worker.listing().offers[0]!);
+  console.log(`offering        ${offer.id} at ${formatUsd(price.amount)} per ${price.unit}`);
   console.log(`allowed fields  ${offer.fields.filter((f) => f.available).map((f) => f.name).join(", ")}`);
   console.log(`always blocked  ${offer.fields.filter((f) => f.alwaysBlocked).map((f) => f.name).join(", ")}`);
 

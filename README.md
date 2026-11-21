@@ -25,9 +25,27 @@ pnpm demo-site                    # just the demo site, on http://127.0.0.1:4100
 |---|---|
 | `packages/protocol` | Shared by agents and workers: encryption, message envelopes, capability definitions, receipt checking |
 | `packages/privacy` | The privacy layer: host rules, allowlist redaction, outbound scan, signed receipts, audit log |
+| `packages/pricing` | The five plans, quotes in USDC units, the prepaid session meter and the host earnings ledger |
 | `apps/worker` | The host worker: an isolated browser profile with a network guard, plus the fixed task code |
 | `apps/demo-site` | Meshwork, a made-up professional network with profiles and a private inbox |
 | `scripts/demo.ts` | A stand-in agent driving the worker through allowed, denied and hostile requests |
+
+## Plans
+
+| Product | Unit | Status |
+|---|---|---|
+| Automation session | per session | Deliverable now |
+| Agent API | per call | Priced; needs the marketplace server |
+| Browser node | per hour, billed by the minute | Priced; not deliverable yet |
+| Regional browser | per hour, in a named country | Priced; not deliverable yet |
+| Dedicated node | per month | Priced; not deliverable yet |
+
+Amounts are whole micro-dollars, which is USDC's smallest unit. The platform
+fee is 10% by default and rounds down, so a split always adds up exactly.
+Hourly sessions are prepaid one block of minutes at a time and stop when the
+paid time runs out, so neither side can lose more than one block. A worker
+refuses to list a product it cannot deliver, and its earnings ledger records
+settled payments only.
 
 ## How a task flows
 

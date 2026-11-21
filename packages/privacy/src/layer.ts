@@ -84,7 +84,6 @@ export interface Listing {
     id: string;
     title: string;
     description: string;
-    priceCents: number;
     fields: { name: string; label: string; available: boolean; alwaysBlocked: boolean }[];
   }[];
 }
@@ -172,7 +171,6 @@ export class PrivacyLayer {
         id: spec.id,
         title: spec.title,
         description: spec.description,
-        priceCents: spec.priceCents,
         fields: Object.entries(spec.fields).map(([name, field]) => ({
           name,
           label: field.label,

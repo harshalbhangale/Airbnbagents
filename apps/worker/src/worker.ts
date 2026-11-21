@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CAPABILITIES } from "@agentbnb/protocol";
+import { CAPABILITIES, isBlockedCapability } from "@agentbnb/protocol";
+import { EarningsLedger, OfferError, parseOffers, usd, type EarningsSummary, type Offer } from "@agentbnb/pricing";
 import {
   AuditLog,
   PrivacyLayer,
@@ -23,6 +24,30 @@ export interface HostWorkerOptions {
   now?: () => number;
 }
 
+/** A worker's public listing: what it can do, on what terms, and at what price. */
+export interface WorkerListing extends Listing {
+  offers: Offer[];
+}
+
+/** Products this version of the worker can actually deliver. The others can be priced once they exist. */
+const DELIVERABLE: ReadonlySet<Offer["kind"]> = new Set(["automation_session"]);
+
+const DEFAULT_OFFERS: readonly Offer[] = [
+  { kind: "automation_session", capability: "profile.read", pricePerSession: usd(0.02) },
+];
+
+function checkOffers(raw: unknown): Offer[] {
+  const offers = parseOffers(raw);
+  for (const offer of offers) {
+    if (!DELIVERABLE.has(offer.kind)) throw new OfferError(`${offer.kind} cannot be offered yet: this worker cannot deliver it`);
+    if (offer.kind === "automation_session") {
+      if (isBlockedCapability(offer.capability)) throw new OfferError(`${offer.capability} can never be offered`);
+      if (!CAPABILITIES[offer.capability]) throw new OfferError(`unknown capability: ${offer.capability}`);
+    }
+  }
+  return offers;
+}
+
 /** Parts of the site the isolated browser refuses to load at all. */
 const BLOCKED_PATHS = ["/messages", "/api/messages", "/settings", "/logout"] as const;
 
@@ -37,13 +62,26 @@ export class HostWorker {
   readonly #audit: AuditLog;
   readonly #policyFile: string;
   readonly #origin: string;
+  readonly #offersFile: string;
+  readonly #ledger: EarningsLedger;
+  #offers: Offer[];
 
-  private constructor(layer: PrivacyLayer, browser: IsolatedBrowser, audit: AuditLog, policyFile: string, origin: string) {
+  private constructor(
+    layer: PrivacyLayer,
+    browser: IsolatedBrowser,
+    audit: AuditLog,
+    origin: string,
+    files: { policy: string; offers: string; earnings: string },
+    offers: Offer[],
+  ) {
     this.#layer = layer;
     this.#browser = browser;
     this.#audit = audit;
-    this.#policyFile = policyFile;
+    this.#policyFile = files.policy;
+    this.#offersFile = files.offers;
+    this.#ledger = new EarningsLedger(files.earnings);
     this.#origin = origin;
+    this.#offers = offers;
   }
 
   static async start(options: HostWorkerOptions): Promise<HostWorker> {
@@ -52,6 +90,8 @@ export class HostWorker {
     const keys = await WorkerKeys.loadOrCreate(options.dataDir);
     const audit = new AuditLog(join(options.dataDir, "audit.jsonl"));
     const policyFile = join(options.dataDir, "policy.json");
+    const offersFile = join(options.dataDir, "offers.json");
+    const offers = checkOffers(existsSync(offersFile) ? JSON.parse(readFileSync(offersFile, "utf8")) : DEFAULT_OFFERS);
     const policy: unknown = existsSync(policyFile)
       ? JSON.parse(readFileSync(policyFile, "utf8"))
       : defaultPolicy(CAPABILITIES);
@@ -71,7 +111,8 @@ export class HostWorker {
         audit,
         now: options.now,
       });
-      return new HostWorker(layer, browser, audit, policyFile, origin);
+      const files = { policy: policyFile, offers: offersFile, earnings: join(options.dataDir, "earnings.jsonl") };
+      return new HostWorker(layer, browser, audit, origin, files, offers);
     } catch (error) {
       await browser.close();
       throw error;
@@ -83,8 +124,29 @@ export class HostWorker {
     return this.#layer.handle(sealedRequest);
   }
 
-  listing(): Listing {
-    return this.#layer.listing();
+  /** Capabilities that are switched on, with the host's price for each. */
+  listing(): WorkerListing {
+    const listing = this.#layer.listing();
+    const enabled = new Set(listing.capabilities.map((capability) => capability.id));
+    return {
+      ...listing,
+      offers: this.#offers.filter((offer) => offer.kind !== "automation_session" || enabled.has(offer.capability)),
+    };
+  }
+
+  get offers(): Offer[] {
+    return structuredClone(this.#offers);
+  }
+
+  /** Changes the host's prices and saves them. Invalid or undeliverable offers are refused and nothing changes. */
+  setOffers(raw: unknown): void {
+    this.#offers = checkOffers(raw);
+    writeFileSync(this.#offersFile, JSON.stringify(this.#offers, null, 2), { mode: 0o600 });
+  }
+
+  /** Money actually received. Stays at zero until payments are settled through the marketplace. */
+  earnings(): EarningsSummary {
+    return this.#ledger.summary();
   }
 
   get policy(): HostPolicy {

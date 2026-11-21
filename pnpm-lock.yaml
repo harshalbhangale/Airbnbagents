@@ -28,6 +28,9 @@ importers:
       '@agentbnb/demo-site':
         specifier: workspace:*
         version: link:../demo-site
+      '@agentbnb/pricing':
+        specifier: workspace:*
+        version: link:../../packages/pricing
       '@agentbnb/privacy':
         specifier: workspace:*
         version: link:../../packages/privacy
@@ -37,6 +40,12 @@ importers:
       playwright:
         specifier: 1.63.0
         version: 1.63.0
+
+  packages/pricing:
+    dependencies:
+      zod:
+        specifier: ^3.24.0
+        version: 3.25.76
 
   packages/privacy:
     dependencies:
