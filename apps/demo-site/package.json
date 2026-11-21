@@ -1,0 +1,7 @@
+{
+  "name": "@agentbnb/demo-site",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/server.ts" }
+}
