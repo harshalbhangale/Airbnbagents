@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { CAPABILITIES, isBlockedCapability } from "@agentbnb/protocol";
-import { EarningsLedger, OfferError, parseOffers, usd, type EarningsSummary, type Offer } from "@agentbnb/pricing";
+import { CAPABILITIES, isBlockedCapability, utf8 } from "@agentbnb/protocol";
+import { EarningsLedger, OfferError, parseOffers, split, usd, type EarningsSummary, type Offer } from "@agentbnb/pricing";
 import {
   AuditLog,
   PrivacyLayer,
@@ -64,9 +64,11 @@ export class HostWorker {
   readonly #origin: string;
   readonly #offersFile: string;
   readonly #ledger: EarningsLedger;
+  readonly #keys: WorkerKeys;
   #offers: Offer[];
 
   private constructor(
+    keys: WorkerKeys,
     layer: PrivacyLayer,
     browser: IsolatedBrowser,
     audit: AuditLog,
@@ -74,6 +76,7 @@ export class HostWorker {
     files: { policy: string; offers: string; earnings: string },
     offers: Offer[],
   ) {
+    this.#keys = keys;
     this.#layer = layer;
     this.#browser = browser;
     this.#audit = audit;
@@ -112,7 +115,7 @@ export class HostWorker {
         now: options.now,
       });
       const files = { policy: policyFile, offers: offersFile, earnings: join(options.dataDir, "earnings.jsonl") };
-      return new HostWorker(layer, browser, audit, origin, files, offers);
+      return new HostWorker(keys, layer, browser, audit, origin, files, offers);
     } catch (error) {
       await browser.close();
       throw error;
@@ -147,6 +150,26 @@ export class HostWorker {
   /** Money actually received. Stays at zero until payments are settled through the marketplace. */
   earnings(): EarningsSummary {
     return this.#ledger.summary();
+  }
+
+  /**
+   * Records a payment the marketplace reports as settled onchain, straight to
+   * the host's payout address. Returns false if it was already recorded.
+   * The report is taken on trust for now; checking the transaction onchain is
+   * still to be added.
+   */
+  recordSettlement(settlement: { network: string; transaction: string; amount: number; at: number }): boolean {
+    return this.#ledger.record(
+      `${settlement.network}:${settlement.transaction}`,
+      "automation_session",
+      { ...split(settlement.amount, 0), quantity: 1, unit: "session" },
+      settlement.at,
+    );
+  }
+
+  /** Proves to a marketplace that this worker holds the signing key in its listing. Never used for receipts. */
+  signMarketplaceAuth(nonce: string, listingHash: string): string {
+    return this.#keys.sign(utf8(`agentbnb/v1/host-auth\n${nonce}\n${listingHash}`));
   }
 
   get policy(): HostPolicy {

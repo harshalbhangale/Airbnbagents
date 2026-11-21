@@ -1,0 +1,13 @@
+{
+  "name": "@agentbnb/sdk",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@agentbnb/protocol": "workspace:*",
+    "@x402/core": "2.32.0",
+    "@x402/evm": "2.32.0",
+    "viem": "^2.21.0"
+  }
+}

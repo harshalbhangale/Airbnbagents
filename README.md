@@ -3,9 +3,10 @@
 A marketplace where people rent narrow, permission-controlled capabilities of
 their own signed-in browser sessions to AI agents, and get paid per task.
 
-This repository currently holds the host side: the program a host runs on their
-own machine, and the privacy layer every task passes through. Payment, the
-marketplace server, the agent SDK and the dashboard are not built yet.
+What is built: the host worker and its privacy layer, the marketplace server
+with an x402 paywall, the agent SDK, and pricing. Not built yet: the host
+dashboard and installer, the MCP server, the onchain commitment contract,
+hourly browser sessions and the platform fee split.
 
 ## Run it
 
@@ -15,7 +16,9 @@ Requires Node 22+ and pnpm.
 pnpm install
 npx playwright install chromium   # skip if Chromium for Playwright is already installed
 pnpm test                         # unit tests plus an end-to-end run in a real browser
-pnpm demo                         # the whole host-side flow, narrated in the terminal
+pnpm demo                         # the host-side flow, no payment, narrated in the terminal
+pnpm demo:paid                    # the full paid flow on Base Sepolia (see below)
+pnpm marketplace                  # just the marketplace server, on http://127.0.0.1:4200
 pnpm demo-site                    # just the demo site, on http://127.0.0.1:4100
 ```
 
@@ -26,6 +29,8 @@ pnpm demo-site                    # just the demo site, on http://127.0.0.1:4100
 | `packages/protocol` | Shared by agents and workers: encryption, message envelopes, capability definitions, receipt checking |
 | `packages/privacy` | The privacy layer: host rules, allowlist redaction, outbound scan, signed receipts, audit log |
 | `packages/pricing` | The five plans, quotes in USDC units, the prepaid session meter and the host earnings ledger |
+| `apps/server` | The marketplace: worker registry, x402 paywall, encrypted task relay |
+| `packages/sdk` | What an agent uses: discover, encrypt, pay, verify, decrypt |
 | `apps/worker` | The host worker: an isolated browser profile with a network guard, plus the fixed task code |
 | `apps/demo-site` | Meshwork, a made-up professional network with profiles and a private inbox |
 | `scripts/demo.ts` | A stand-in agent driving the worker through allowed, denied and hostile requests |
@@ -46,6 +51,37 @@ Hourly sessions are prepaid one block of minutes at a time and stop when the
 paid time runs out, so neither side can lose more than one block. A worker
 refuses to list a product it cannot deliver, and its earnings ledger records
 settled payments only.
+
+## Payment
+
+Tasks are paid with x402 "exact" payments in USDC on Base Sepolia.
+
+1. The agent posts an encrypted task. If the host has set a price for that
+   capability, the marketplace answers `402` with the price and the host's
+   payout address.
+2. The agent signs an authorization for exactly that amount and posts again.
+   The marketplace verifies it through the facilitator. Nothing has moved yet.
+3. The worker runs the task. The marketplace checks the worker's signed
+   receipt against the request before going further.
+4. Only if the task completed is the payment submitted onchain, and only once
+   it settles is the result released. A denied, rejected, withheld or failed
+   task costs the agent nothing.
+
+The payment goes straight from the agent to the host's address; the
+marketplace never holds funds. The 10% platform fee is not collected yet: it
+needs a splitter contract, which comes with the contract work. The agent needs
+no ETH, because the facilitator submits the transfer.
+
+To run the paid flow for real, fund a testnet-only wallet with Base Sepolia
+USDC (for example from Circle's faucet) and run:
+
+```sh
+AGENT_PRIVATE_KEY=0x... HOST_PAYOUT_ADDRESS=0x... pnpm demo:paid
+```
+
+The automated tests exercise the real x402 client and server code against a
+local stand-in for the facilitator and chain. A settlement on the real network
+has not been run yet.
 
 ## How a task flows
 
@@ -74,7 +110,13 @@ layer can create one.
 - **The host's account from the agent.** The agent gets approved fields as JSON
   and nothing else: no page, no screenshot, no cookies, no free navigation.
 - **The task from the marketplace and the network.** They relay ciphertext and
-  see only the capability name, sizes and timing.
+  see only the capability name, sizes, timing and payment.
+- **Not the agent from a marketplace that lies about keys.** An agent encrypts
+  to the key in the listing the marketplace serves. Until worker keys are
+  anchored onchain, an agent that cares should pin a worker's keys after first
+  use.
+- **A host's earnings figure is the marketplace's report.** The worker records
+  settlements it is told about and does not yet check them onchain.
 - **Not the task from the host.** The host's machine decrypts and runs the
   task, so the host can see what was asked and what was returned.
 - **The outbound scan is a backstop, not a guarantee.** It is pattern-based.

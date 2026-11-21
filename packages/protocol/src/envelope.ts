@@ -184,17 +184,15 @@ export async function sealRequest(args: {
 export class ResultVerificationError extends Error {}
 
 /**
- * Agent side: check the worker's signed receipt, then decrypt the result.
- * Returns `body: null` when the worker could not address a reply (for example
- * it could not decrypt the request at all).
+ * Checks that a result is well formed, signed by the expected worker, and is
+ * the answer to this exact request. Does not decrypt anything, so the
+ * marketplace can run it as well as the agent.
  */
-export async function openResult(args: {
+export function verifyResultEnvelope(args: {
   result: unknown;
   request: SealedRequest;
-  replyKeys: EncryptionKeyPair;
-  /** The worker's signing key as published in its listing. */
   workerSigningKey: string;
-}): Promise<{ status: Status; reason: Reason | null; receipt: Receipt; body: ResultBody | null }> {
+}): SealedResult {
   const parsed = sealedResultSchema.safeParse(args.result);
   if (!parsed.success) throw new ResultVerificationError("result is not well formed");
   const result = parsed.data;
@@ -211,21 +209,41 @@ export async function openResult(args: {
   if (result.capability !== request.capability || receipt.capability !== request.capability) {
     throw new ResultVerificationError("result is for a different capability");
   }
+  if (receipt.workerKeyId !== request.workerKeyId) throw new ResultVerificationError("result is from a different worker");
   if (receipt.status !== result.status || receipt.reason !== result.reason) {
     throw new ResultVerificationError("result does not match its receipt");
   }
   if (receipt.requestHash !== sealedHash(request)) {
     throw new ResultVerificationError("receipt covers a different request");
   }
-
   if (result.enc === null || result.ciphertext === null) {
-    if (receipt.resultHash !== null) throw new ResultVerificationError("receipt promises a result that is missing");
+    if (result.enc !== null || result.ciphertext !== null || receipt.resultHash !== null) {
+      throw new ResultVerificationError("receipt promises a result that is missing");
+    }
+  } else if (receipt.resultHash !== sealedHash({ enc: result.enc, ciphertext: result.ciphertext })) {
+    throw new ResultVerificationError("result ciphertext does not match its receipt");
+  }
+  return result;
+}
+
+/**
+ * Agent side: check the worker's signed receipt, then decrypt the result.
+ * Returns `body: null` when the worker could not address a reply (for example
+ * it could not decrypt the request at all).
+ */
+export async function openResult(args: {
+  result: unknown;
+  request: SealedRequest;
+  replyKeys: EncryptionKeyPair;
+  /** The worker's signing key as published in its listing. */
+  workerSigningKey: string;
+}): Promise<{ status: Status; reason: Reason | null; receipt: Receipt; body: ResultBody | null }> {
+  const result = verifyResultEnvelope(args);
+  const { receipt } = result;
+  if (result.enc === null || result.ciphertext === null) {
     return { status: result.status, reason: result.reason, receipt, body: null };
   }
   const sealed = { enc: result.enc, ciphertext: result.ciphertext };
-  if (receipt.resultHash !== sealedHash(sealed)) {
-    throw new ResultVerificationError("result ciphertext does not match its receipt");
-  }
   let plaintext: Uint8Array;
   try {
     plaintext = await open(args.replyKeys.privateKey, sealed, { info: RESULT_INFO, aad: resultAad(result) });
