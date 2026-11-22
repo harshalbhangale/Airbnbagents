@@ -78,6 +78,27 @@ describe("host worker against the demo site", () => {
     expect(inboxHits).toEqual([]);
   });
 
+  it("holds under load: nothing private, posted or third-party gets out across many tasks", async () => {
+    // Every signed-in page on this site tries three things by itself: load the inbox preview,
+    // post to an analytics endpoint, and fetch a tracking pixel from another origin.
+    const posts = () => site.requests.filter((r) => r.startsWith("POST /api/analytics")).length;
+    const postsBefore = posts();
+    const trackerBefore = site.trackerRequests.length;
+    const blockedBefore = worker.guardStats().blockedPath;
+
+    worker.setPolicy({ ...worker.policy, maxTasksPerMinute: 600 });
+    const handles = ["jordan-lee", "priya-nair", "casey-host", "nobody-here"];
+    for (let i = 0; i < 24; i++) await rent("profile.read", { handle: handles[i % handles.length], fields: ["name"] });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    expect(site.requests.filter((r) => r.includes("/messages"))).toEqual([]);
+    expect(posts()).toBe(postsBefore);
+    expect(site.trackerRequests.length).toBe(trackerBefore);
+    expect(worker.guardStats().blockedPath).toBeGreaterThanOrEqual(blockedBefore + 24);
+    expect(worker.guardStats().offOrigin).toBeGreaterThan(0);
+    expect(worker.guardStats().blockedMethod).toBeGreaterThan(0);
+  });
+
   it("denies a request for private messages without touching the site", async () => {
     const before = site.requests.length;
     const result = await rent("messages.read", { thread: "latest" });
@@ -123,7 +144,7 @@ describe("host worker against the demo site", () => {
   it("applies a rule change straight away and remembers it", async () => {
     worker.setPolicy({
       capabilities: { "profile.read": { enabled: true, allowFields: ["name", "email"] } },
-      maxTasksPerMinute: 30,
+      maxTasksPerMinute: 600,
     });
     const result = await rent("profile.read", { handle: "priya-nair" });
     expect(result.body?.data).toEqual({ name: "Priya Nair", email: "priya@northwind.test" });
@@ -167,7 +188,8 @@ describe("host worker against the demo site", () => {
   it("never let any private content out, in results or in the worker's own records", async () => {
     const entries = worker.auditEntries();
     expect(worker.auditIntact()).toBe(true);
-    expect(entries.length).toBeGreaterThan(10);
+    expect(entries.length).toBeGreaterThan(30);
+    expect(site.trackerRequests).toEqual([]);
 
     const records = [JSON.stringify(entries), readFileSync(join(dataDir, "audit.jsonl"), "utf8"), readFileSync(join(dataDir, "policy.json"), "utf8")].join("\n");
     for (const secret of PRIVATE_STRINGS) expect(records).not.toContain(secret);

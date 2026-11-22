@@ -12,13 +12,14 @@
     "@x402/core": "2.32.0",
     "@x402/evm": "2.32.0",
     "zod": "^3.24.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "viem": "^2.21.0"
   },
   "devDependencies": {
     "@types/ws": "^8.5.13",
-    "viem": "^2.21.0",
     "@agentbnb/worker": "workspace:*",
     "@agentbnb/sdk": "workspace:*",
-    "@agentbnb/demo-site": "workspace:*"
+    "@agentbnb/demo-site": "workspace:*",
+    "playwright": "1.63.0"
   }
 }

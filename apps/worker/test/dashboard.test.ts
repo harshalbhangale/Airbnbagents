@@ -40,7 +40,13 @@ function rawGet(path: string, headers: Record<string, string>): Promise<number> 
 beforeAll(async () => {
   site = await startDemoSite();
   dataDir = mkdtempSync(join(tmpdir(), "agentbnb-dash-"));
-  app = await HostApp.start({ dataDir, siteOrigin: site.origin });
+  app = await HostApp.start({
+    dataDir,
+    siteOrigin: site.origin,
+    // Stands in for the chain: a 2-cent payment is really there, anything else is not.
+    verifySettlement: async (claim) => (claim.amount === 20_000 ? "confirmed" : "mismatch"),
+    verifyRetryMs: 10,
+  });
   dashboard = await startDashboard(app);
   browser = await chromium.launch();
   page = await browser.newPage();
@@ -177,6 +183,26 @@ describe("the dashboard in a browser", () => {
     expect((await runTask("profile.read", { handle: "jordan-lee" })).reason).toBe("host_paused");
     await page.click("#pause-button");
     await expect.poll(() => app.worker.paused).toBe(false);
+  });
+
+  it("shows revenue, counting only payments that pass the onchain check", async () => {
+    expect(await page.textContent("#payments-empty")).toContain("No payments yet");
+    const payTo = "0x1111111111111111111111111111111111111111";
+    const real = `0x${"ab".repeat(32)}`;
+    const bogus = `0x${"cd".repeat(32)}`;
+    app.worker.recordSettlement({ network: "eip155:84532", transaction: real, amount: 20_000, payTo, at: Date.now() });
+    app.worker.recordSettlement({ network: "eip155:84532", transaction: bogus, amount: 5_000_000, payTo, at: Date.now() });
+
+    await expect.poll(() => page.textContent("#payment-rows")).toContain("Failed the onchain check");
+    const rows = (await page.textContent("#payment-rows")) ?? "";
+    expect(rows).toContain("Confirmed onchain");
+    // The $5 claim that is not onchain adds nothing to any total.
+    expect(await page.textContent("#revenue-all")).toBe("$0.02");
+    expect(await page.textContent("#revenue-today")).toBe("$0.02");
+    expect(await page.textContent("#revenue-week")).toBe("$0.02");
+    expect(await page.textContent("#revenue-confirmation")).toBe("$0.02 confirmed onchain.");
+    expect(await page.getAttribute("#payment-rows a", "href")).toMatch(/^https:\/\/sepolia\.basescan\.org\/tx\/0x[0-9a-f]{64}$/);
+    expect(app.worker.earnings()).toMatchObject({ payments: 1, host: 20_000, confirmed: { payments: 1, host: 20_000 } });
   });
 
   it("shows what happened, in plain words, without showing any content", async () => {

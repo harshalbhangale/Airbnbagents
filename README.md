@@ -3,10 +3,11 @@
 A marketplace where people rent narrow, permission-controlled capabilities of
 their own signed-in browser sessions to AI agents, and get paid per task.
 
-What is built: the host worker and its privacy layer, the host dashboard, the
-marketplace server with an x402 paywall, the agent SDK, and pricing. Not built
-yet: the desktop installer, the MCP server, the onchain commitment contract,
-hourly browser sessions and the platform fee split.
+What is built: the desktop app for hosts, the host worker and its privacy
+layer, the host dashboard with revenue, the marketplace server, payment by
+crypto or by card, the renter console, the agent SDK, and pricing. Not built
+yet: the MCP server, the onchain commitment contract, hourly browser sessions,
+open-model inference and the platform fee split.
 
 ## Run it
 
@@ -19,7 +20,8 @@ pnpm test                         # unit tests plus an end-to-end run in a real 
 pnpm demo                         # the host-side flow, no payment, narrated in the terminal
 pnpm demo:paid                    # the full paid flow on Base Sepolia (see below)
 pnpm marketplace                  # just the marketplace server, on http://127.0.0.1:4200
-pnpm host                         # the host app: worker plus dashboard (see below)
+pnpm host                         # the host app in a terminal: worker plus dashboard
+pnpm desktop                      # the host app as a desktop app (see below)
 pnpm demo-site                    # just the demo site, on http://127.0.0.1:4100
 ```
 
@@ -32,9 +34,61 @@ pnpm demo-site                    # just the demo site, on http://127.0.0.1:4100
 | `packages/pricing` | The five plans, quotes in USDC units, the prepaid session meter and the host earnings ledger |
 | `apps/server` | The marketplace: worker registry, x402 paywall, encrypted task relay |
 | `packages/sdk` | What an agent uses: discover, encrypt, pay, verify, decrypt |
+| `apps/desktop` | The desktop app: the worker and dashboard in a window, with a built-in browser for the rented account |
 | `apps/worker` | The host worker: an isolated browser profile with a network guard, plus the fixed task code |
 | `apps/demo-site` | Meshwork, a made-up professional network with profiles and a private inbox |
 | `scripts/demo.ts` | A stand-in agent driving the worker through allowed, denied and hostile requests |
+
+## The desktop app
+
+`pnpm desktop` opens the host app in its own window. It is the same worker and
+dashboard, with two differences:
+
+- **A built-in browser for the rented account.** The app keeps a separate
+  browser session inside itself, with its own cookies, so nothing else needs
+  installing and the host's everyday browser is never involved.
+- **A real sign-in window.** The host signs in on the site's own page in a
+  window of that separate session. Their details are never typed into
+  agentbnb.
+
+Closing the window leaves the host online in the tray; quit from the tray
+menu. By default the app connects to the hosted demo marketplace and demo site
+(see "Hosting the marketplace"), so an installed copy works with no local
+set-up. To point it elsewhere, such as at a local marketplace while
+developing, set `AGENTBNB_MARKETPLACE_URL` and `AGENTBNB_SITE_ORIGIN`, or put
+`marketplaceUrl` and `siteOrigin` in `config.json` in the app's data folder.
+The built-in defaults live in `apps/desktop/src/defaults.ts`.
+
+**Installers.** `pnpm desktop:dist` builds an installer for the machine it runs
+on. The "Desktop app" workflow on GitHub builds all three (a `.dmg` for macOS
+on Apple and Intel chips, an `.exe` for Windows, an AppImage for Linux) and
+attaches them to the workflow run as artifacts. They are not signed by a
+registered developer, so macOS and Windows warn before opening them; proper
+signing needs an Apple Developer account and a Windows certificate. The macOS
+build is ad-hoc signed, which is the least Apple Silicon Macs require to run
+an app at all.
+
+The desktop app has its own end-to-end test, which drives the real app:
+`xvfb-run -a pnpm test` on Linux, plain `pnpm test` on macOS or Windows.
+
+## Hosting the marketplace
+
+`deploy/aws` holds a CloudFormation template that runs the marketplace and the
+demo site on one small AWS server behind HTTPS, with a guide to what it
+creates, what it costs and how to give it payment keys.
+
+A demo instance is running from it:
+
+- Marketplace: https://market.35-154-72-7.sslip.io
+- Renter console: https://market.35-154-72-7.sslip.io/console
+- Demo site: https://meshwork.35-154-72-7.sslip.io
+
+It is on the Base Sepolia testnet. Crypto payments are on, and card payments
+are on through Dodo Payments in test mode, so its checkout takes Dodo's test
+cards and no real money. It is a demo: one server, no backups, and addresses
+that change if the stack is recreated.
+The desktop app has been run against it end to end, with an agent paying for
+tasks through it over the internet.
 
 ## Running as a host
 
@@ -73,6 +127,11 @@ settled payments only.
 
 ## Payment
 
+Hosts are always paid in USDC, straight to their own address, when a task
+completes. Renters can pay in either of two ways.
+
+### Paying with crypto
+
 Tasks are paid with x402 "exact" payments in USDC on Base Sepolia.
 
 1. The agent posts an encrypted task. If the host has set a price for that
@@ -91,7 +150,59 @@ marketplace never holds funds. The 10% platform fee is not collected yet: it
 needs a splitter contract, which comes with the contract work. The agent needs
 no ETH, because the facilitator submits the transfer.
 
-To run the paid flow for real, fund a testnet-only wallet with Base Sepolia
+### Paying by card
+
+A renter opens an account in the renter console (`/console` on the
+marketplace), buys credit by card, and gives their agent the account's API key
+(`new AgentClient({ baseUrl, apiKey })`).
+
+1. Buying credit sends the renter to the card processor's own checkout page.
+   Card details never reach agentbnb. When they return, the marketplace asks
+   the processor whether the payment went through and adds the credit. A
+   payment can credit only the account it was opened for, and only once.
+2. When the agent runs a task, the marketplace holds the price from the
+   renter's credit and has its own wallet (the treasury) pay the host through
+   the same x402 payment as above.
+3. If the task completes and the payment settles, the hold becomes a charge.
+   If the task is denied, rejected, withheld or fails, or settlement fails,
+   the credit is released.
+
+Two card processors are supported. Card payments are on when the marketplace
+is started with one of them plus `TREASURY_PRIVATE_KEY`, and the treasury
+wallet holds USDC on the network.
+
+| Processor | Settings | Set-up needed |
+|---|---|---|
+| Dodo Payments | `DODO_PAYMENTS_API_KEY`, `DODO_PRODUCT_ID` | One product in the Dodo dashboard: one-time, "Pay What You Want" switched on, priced in USD, minimum no higher than the smallest top-up. Its id is `DODO_PRODUCT_ID`. The API key needs write access to payments. |
+| Stripe | `STRIPE_SECRET_KEY` | None |
+
+A Dodo test key (`dodo_test_…`) talks to Dodo's test host and a live key to
+its live host. Dodo may add tax on top of a top-up; credit is the amount
+asked for, not the tax.
+
+Things to know before taking real card payments:
+
+- **The marketplace holds renters' prepaid credit.** That is different from
+  the crypto path, where it never holds funds, and it carries obligations
+  (refunds, chargebacks, and in many places money-services rules) that need
+  proper advice.
+- **The processor's fee comes out of each top-up**, which is why the minimum is $5.
+- **The treasury must be kept funded.** If it runs dry, card-paid tasks are
+  refused and the renter's credit is untouched.
+- The Dodo flow has been run end to end against Dodo itself in test mode,
+  through the hosted demo: a $500 top-up paid with Dodo's test card was
+  confirmed, credited once, and a task was then paid from that credit, with
+  the host's USDC payment confirmed onchain. Stripe has only been run against
+  a local stand-in built from its documented API.
+- Top-ups are confirmed by asking the processor, not by webhook. Dodo
+  recommends webhooks as the source of truth; adding one would make
+  confirmation independent of the renter returning to the console.
+- Anyone can open an account, and the console keeps the API key in the
+  browser's local storage. Both want tightening before a public launch.
+
+### Running the paid flow yourself
+
+To run the crypto flow for real, fund a testnet-only wallet with Base Sepolia
 USDC (for example from Circle's faucet) and run:
 
 ```sh
@@ -137,8 +248,18 @@ layer can create one.
   to the key in the listing the marketplace serves. Until worker keys are
   anchored onchain, an agent that cares should pin a worker's keys after first
   use.
-- **A host's earnings figure is the marketplace's report.** The worker records
-  settlements it is told about and does not yet check them onchain.
+- **A host's earnings are checked against the chain.** A payment the
+  marketplace reports is looked up onchain: it counts as confirmed only when
+  the transaction really moved that amount of USDC to the host's address, and
+  is dropped if it did not.
+- **The browser guard is built to fail closed.** Blocked pages are blocked
+  inside the browser, not by this program answering in time, because a request
+  held for a decision when its tab closes would otherwise be let through. On
+  the command-line worker, refusing non-GET requests and other sites addressed
+  by raw IP still relies on interception, with tabs drained before they close;
+  the same is true of all other sites when the machine uses a network proxy,
+  since the proxy looks names up, not the browser. The desktop app judges
+  every request before it is sent.
 - **Not the task from the host.** The host's machine decrypts and runs the
   task, so the host can see what was asked and what was returned.
 - **The outbound scan is a backstop, not a guarantee.** It is pattern-based.

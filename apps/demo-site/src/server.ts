@@ -11,15 +11,18 @@ function esc(text: string): string {
   return text.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]!);
 }
 
-function page(title: string, body: string, signedIn: boolean): string {
+function renderPage(title: string, body: string, signedIn: boolean, trackerOrigin: string): string {
   const nav = signedIn
     ? `<a href="/feed">Home</a> <a href="/messages" id="nav-messages">Messages <b>${MESSAGES.length}</b></a> <a href="/settings">Settings</a>
        <form method="post" action="/logout" style="display:inline"><button>Sign out</button></form>`
     : `<a href="/login">Sign in</a>`;
-  // Like real networks, every signed-in page pulls a preview of the inbox into a corner widget.
+  // Like real networks, every signed-in page pulls a preview of the inbox into a corner widget,
+  // reports to its own analytics endpoint, and loads a third-party tracking pixel.
   const widget = signedIn
     ? `<aside id="inbox-preview"><h2>Messaging</h2><ul id="inbox-preview-list"><li>Loading…</li></ul></aside>
+       <img src="${trackerOrigin}/pixel.gif" alt="" width="1" height="1">
        <script>
+         navigator.sendBeacon("/api/analytics", JSON.stringify({ page: location.pathname }));
          fetch("/api/messages/preview").then((r) => r.json()).then((items) => {
            document.getElementById("inbox-preview-list").innerHTML =
              items.map((m) => "<li><b>" + m.from + "</b>: " + m.body + "</li>").join("");
@@ -57,6 +60,8 @@ export interface DemoSite {
   origin: string;
   /** Paths requested since start, for tests that check what a browser actually fetched. */
   requests: string[];
+  /** Requests that reached the separate third-party tracker the pages point at. */
+  trackerRequests: string[];
   close(): Promise<void>;
 }
 
@@ -64,6 +69,17 @@ export interface DemoSite {
 export async function startDemoSite(port = 0): Promise<DemoSite> {
   const sessions = new Set<string>();
   const requests: string[] = [];
+  const trackerRequests: string[] = [];
+
+  // A second origin, standing in for a third-party tracker embedded in the site's pages.
+  const tracker = createServer((req, res) => {
+    trackerRequests.push(`${req.method} ${req.url}`);
+    res.writeHead(200, { "content-type": "image/gif" });
+    res.end(Buffer.from("R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "base64"));
+  });
+  await new Promise<void>((resolve) => tracker.listen(0, "127.0.0.1", resolve));
+  const trackerOrigin = `http://127.0.0.1:${(tracker.address() as AddressInfo).port}`;
+  const page = (title: string, body: string, signedIn: boolean) => renderPage(title, body, signedIn, trackerOrigin);
 
   const send = (res: ServerResponse, status: number, html: string, headers: Record<string, string> = {}) => {
     res.writeHead(status, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", ...headers });
@@ -183,6 +199,11 @@ export async function startDemoSite(port = 0): Promise<DemoSite> {
         return res.end(JSON.stringify(MESSAGES.map((m) => ({ from: esc(m.from), body: esc(m.body) }))));
       }
 
+      if (path === "/api/analytics") {
+        res.writeHead(204);
+        return res.end();
+      }
+
       if (path === "/settings") {
         return send(
           res,
@@ -203,8 +224,11 @@ export async function startDemoSite(port = 0): Promise<DemoSite> {
   return {
     origin: `http://127.0.0.1:${actual}`,
     requests,
+    trackerRequests,
     close: () =>
       new Promise<void>((resolve, reject) => {
+        tracker.closeAllConnections();
+        tracker.close();
         server.closeAllConnections();
         server.close((error) => (error ? reject(error) : resolve()));
       }),

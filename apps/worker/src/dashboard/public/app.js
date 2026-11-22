@@ -78,15 +78,47 @@
     $("worker-id").textContent = `Worker ${s.workerKeyId}`;
     $("account-status").textContent = s.signedIn ? "Signed in. Agents can use the capabilities you allow below." : "Signed out. Tasks will fail until you sign in.";
     $("account-site").textContent = s.site;
-    $("sign-in-form").hidden = s.signedIn;
+    $("sign-in-form").hidden = s.signedIn || s.signInWindow;
+    $("open-sign-in-button").hidden = s.signedIn || !s.signInWindow;
 
     const payout = $("payout-input");
     if (document.activeElement !== payout) payout.value = s.payoutAddress || "";
 
-    $("earnings-total").textContent = usd(s.earnings.host);
-    $("earnings-count").textContent = `${s.earnings.payments} paid task${s.earnings.payments === 1 ? "" : "s"}`;
+    $("earnings-count").textContent = `${s.earnings.payments} paid task${s.earnings.payments === 1 ? "" : "s"}.`;
     const market = { off: "Not connected to a marketplace", connecting: "Connecting to the marketplace…", connected: "Listed on the marketplace", disconnected: "Marketplace connection lost, retrying", refused: "The marketplace refused this worker" };
     $("marketplace-status").textContent = market[s.marketplace.status] || "";
+  }
+
+  const PAYMENT_STATES = { confirmed: "Confirmed onchain", reported: "Awaiting confirmation", failed: "Failed the onchain check" };
+  let lastPayments = "";
+
+  function renderRevenue(s) {
+    $("revenue-today").textContent = usd(s.revenue.today);
+    $("revenue-week").textContent = usd(s.revenue.last7Days);
+    $("revenue-all").textContent = usd(s.earnings.host);
+    const { confirmed, awaiting } = s.earnings;
+    $("revenue-confirmation").textContent = s.earnings.payments
+      ? `${usd(confirmed.host)} confirmed onchain` + (awaiting.payments ? `, ${usd(awaiting.host)} awaiting confirmation.` : ".")
+      : "";
+    const key = JSON.stringify(s.revenue.payments);
+    if (key === lastPayments) return;
+    lastPayments = key;
+    $("payments-wrap").hidden = s.revenue.payments.length === 0;
+    $("payments-empty").hidden = s.revenue.payments.length > 0;
+    const rows = s.revenue.payments.map((payment) => {
+      const link = el("td");
+      // Only ever a block-explorer address built by the host app itself.
+      if (payment.url && /^https:\/\/(sepolia\.)?basescan\.org\/tx\/0x[0-9a-f]{64}$/.test(payment.url)) {
+        link.append(el("a", { href: payment.url, target: "_blank", rel: "noopener noreferrer", textContent: "View" }));
+      } else link.textContent = "Not available";
+      return el("tr", {}, [
+        el("td", { className: "time", textContent: new Date(payment.at).toLocaleString() }),
+        el("td", { textContent: usd(payment.amount) }),
+        el("td", { className: `state-${payment.state}`, textContent: PAYMENT_STATES[payment.state] || payment.state }),
+        link,
+      ]);
+    });
+    $("payment-rows").replaceChildren(...rows);
   }
 
   function renderCapabilities(s) {
@@ -176,6 +208,7 @@
       if (!response.ok) throw new Error("state");
       current = await response.json();
       renderStatus(current);
+      renderRevenue(current);
       renderCapabilities(current);
       renderActivity(current);
     } catch {
@@ -186,6 +219,7 @@
 
   $("pause-button").addEventListener("click", () => current && post("/api/pause", { paused: !current.paused }).catch(() => {}));
   $("recheck-button").addEventListener("click", () => post("/api/recheck-sign-in", {}).catch(() => {}));
+  $("open-sign-in-button").addEventListener("click", () => post("/api/open-sign-in", {}).catch(() => {}));
   $("payout-form").addEventListener("submit", (event) => {
     event.preventDefault();
     post("/api/payout", { address: $("payout-input").value.trim() }).catch(() => {});

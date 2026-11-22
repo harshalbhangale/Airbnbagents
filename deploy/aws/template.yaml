@@ -1,0 +1,311 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  agentbnb hosted demo: one small server running the marketplace and the demo
+  site behind HTTPS. Everything this creates is in this one stack; deleting the
+  stack removes all of it.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC to run in. The account's default VPC is fine.
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: A public subnet in that VPC.
+  Commit:
+    Type: String
+    AllowedPattern: "^[0-9a-f]{40}$"
+    Description: >-
+      Full git commit of the repository to run when the server is first
+      created. Changing it later does not redeploy; use agentbnb-deploy on the
+      server for that.
+  Repository:
+    Type: String
+    Default: harshalbhangale/Airbnbagents
+    AllowedPattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+    Description: Public GitHub repository to run, as owner/name.
+  InstanceType:
+    Type: String
+    Default: t4g.small
+    AllowedValues: [t4g.micro, t4g.small, t4g.medium]
+  Network:
+    Type: String
+    Default: "eip155:84532"
+    AllowedValues: ["eip155:84532", "eip155:8453"]
+    Description: Chain for USDC payments. 84532 is the Base Sepolia testnet; 8453 is Base mainnet and moves real money.
+  Image:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64
+
+Resources:
+  Address:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - { Key: Name, Value: !Ref "AWS::StackName" }
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: agentbnb demo server - web traffic only, no SSH
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0, Description: HTTP for certificate issuance and redirect }
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0, Description: HTTPS }
+      Tags:
+        - { Key: Name, Value: !Ref "AWS::StackName" }
+
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        # Lets the server be administered through Systems Manager, so no SSH port or key is needed.
+        - !Sub arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: read-own-secrets
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Payment keys are kept in Parameter Store under this stack's own path and read at start-up.
+              - Effect: Allow
+                Action: [ssm:GetParametersByPath, ssm:GetParameters, ssm:GetParameter]
+                Resource:
+                  # Listing by path is authorised against the path itself; reading a value against the parameter.
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/agentbnb/${AWS::StackName}
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/agentbnb/${AWS::StackName}/*
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref Role]
+
+  Server:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref Image
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds: [!Ref SecurityGroup]
+      MetadataOptions:
+        HttpTokens: required
+        HttpEndpoint: enabled
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs: { VolumeSize: 16, VolumeType: gp3, Encrypted: true, DeleteOnTermination: true }
+      Tags:
+        - { Key: Name, Value: !Ref "AWS::StackName" }
+      UserData:
+        Fn::Base64: !Sub
+          - |
+            #!/bin/bash
+            set -euxo pipefail
+            exec > >(tee -a /var/log/agentbnb-bootstrap.log) 2>&1
+
+            MARKET_HOST="market.${IpDashed}.sslip.io"
+            SITE_HOST="meshwork.${IpDashed}.sslip.io"
+
+            dnf install -y git tar xz
+
+            # Node 22, checked against the published checksums.
+            cd /tmp
+            curl -fsSL https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt -o node-sums.txt
+            NODE_FILE=$(awk '/linux-arm64.tar.xz$/ {print $2}' node-sums.txt)
+            curl -fsSL "https://nodejs.org/dist/latest-v22.x/$NODE_FILE" -o "$NODE_FILE"
+            grep " $NODE_FILE\$" node-sums.txt | sha256sum -c -
+            tar -xJf "$NODE_FILE" -C /usr/local --strip-components=1
+            corepack enable
+
+            # Caddy terminates HTTPS and gets its own certificates. Taken from its official release, checked against the published checksums.
+            CADDY_TAG=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/caddyserver/caddy/releases/latest | sed 's#.*/tag/##')
+            CADDY_VER=$(echo "$CADDY_TAG" | sed 's/^v//')
+            CADDY_FILE="caddy_"$CADDY_VER"_linux_arm64.tar.gz"
+            curl -fsSL "https://github.com/caddyserver/caddy/releases/download/$CADDY_TAG/$CADDY_FILE" -o "$CADDY_FILE"
+            curl -fsSL "https://github.com/caddyserver/caddy/releases/download/$CADDY_TAG/caddy_"$CADDY_VER"_checksums.txt" -o caddy-sums.txt
+            grep " $CADDY_FILE\$" caddy-sums.txt | sha512sum -c -
+            tar -xzf "$CADDY_FILE" -C /usr/local/bin caddy
+            chmod 755 /usr/local/bin/caddy
+            useradd --system --home-dir /var/lib/caddy --create-home --shell /sbin/nologin caddy
+            mkdir -p /etc/caddy
+            cat > /etc/caddy/Caddyfile <<CADDY
+            $MARKET_HOST {
+              encode gzip
+              reverse_proxy 127.0.0.1:4200
+            }
+            $SITE_HOST {
+              encode gzip
+              reverse_proxy 127.0.0.1:4100
+            }
+            CADDY
+
+            # The app runs as its own unprivileged user.
+            useradd --system --home-dir /opt/agentbnb --create-home --shell /sbin/nologin agentbnb
+            install -d -o agentbnb -g agentbnb -m 700 /var/lib/agentbnb
+            cd /opt/agentbnb
+            sudo -u agentbnb git clone "https://github.com/${Repository}.git" app
+            cd app
+            sudo -u agentbnb git checkout --detach "${Commit}"
+            # sudo resets PATH to the system directories, so /usr/local/bin (node, pnpm) is added back explicitly.
+            sudo -u agentbnb env PATH=/usr/local/bin:/usr/bin:/bin HOME=/opt/agentbnb COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+              PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 ELECTRON_SKIP_BINARY_DOWNLOAD=1 pnpm install --frozen-lockfile
+
+            mkdir -p /etc/agentbnb
+            cat > /etc/agentbnb/marketplace.env <<ENV
+            PORT=4200
+            PUBLIC_URL=https://$MARKET_HOST
+            X402_NETWORK=${Network}
+            ACCOUNTS_FILE=/var/lib/agentbnb/accounts.jsonl
+            ENV
+            cat > /etc/agentbnb/demo-site.env <<ENV
+            PORT=4100
+            ENV
+
+            # Payment keys live in Parameter Store, not on disk: they are read into memory-backed storage at each start.
+            cat > /usr/local/bin/agentbnb-secrets <<'SECRETS'
+            #!/bin/bash
+            set -euo pipefail
+            umask 077
+            mkdir -p /run/agentbnb
+            : > /run/agentbnb/secrets.env
+            # If the settings cannot be read, say why in the service log and start without them: crypto payments still work.
+            if settings=$(aws ssm get-parameters-by-path --region "$AWS_REGION" --path "$SECRETS_PATH" --with-decryption \
+              --query 'Parameters[].[Name,Value]' --output text 2>&1); then
+              printf '%s\n' "$settings" | while IFS=$'\t' read -r name value; do
+                if [ -n "$name" ] && [ "$name" != "None" ]; then printf '%s=%s\n' "$(basename "$name")" "$value" >> /run/agentbnb/secrets.env; fi
+              done
+              echo "agentbnb: read $(wc -l < /run/agentbnb/secrets.env) payment setting(s) from $SECRETS_PATH"
+            else
+              echo "agentbnb: could not read payment settings from $SECRETS_PATH: $settings" >&2
+            fi
+            chown agentbnb:agentbnb /run/agentbnb /run/agentbnb/secrets.env
+            SECRETS
+            chmod 755 /usr/local/bin/agentbnb-secrets
+
+            # Moves the running server to another commit: agentbnb-deploy <40-character commit>.
+            cat > /usr/local/bin/agentbnb-deploy <<'DEPLOY'
+            #!/bin/bash
+            set -euo pipefail
+            COMMIT="$1"
+            echo "$COMMIT" | grep -Eq '^[0-9a-f]{40}$' || { echo "usage: agentbnb-deploy <full commit>" >&2; exit 2; }
+            cd /opt/agentbnb/app
+            sudo -u agentbnb git fetch --quiet origin
+            sudo -u agentbnb git checkout --quiet --detach "$COMMIT"
+            sudo -u agentbnb env PATH=/usr/local/bin:/usr/bin:/bin HOME=/opt/agentbnb COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+              PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 ELECTRON_SKIP_BINARY_DOWNLOAD=1 pnpm install --frozen-lockfile
+            systemctl restart agentbnb-demo-site agentbnb-marketplace
+            echo "now running $(sudo -u agentbnb git rev-parse --short HEAD)"
+            DEPLOY
+            chmod 755 /usr/local/bin/agentbnb-deploy
+
+            cat > /etc/systemd/system/agentbnb-marketplace.service <<UNIT
+            [Unit]
+            Description=agentbnb marketplace
+            After=network-online.target
+            Wants=network-online.target
+
+            [Service]
+            User=agentbnb
+            WorkingDirectory=/opt/agentbnb/app
+            Environment=PATH=/usr/local/bin:/usr/bin:/bin
+            Environment=HOME=/opt/agentbnb
+            Environment=AWS_REGION=${AWS::Region}
+            Environment=SECRETS_PATH=/agentbnb/${AWS::StackName}
+            EnvironmentFile=/etc/agentbnb/marketplace.env
+            EnvironmentFile=-/run/agentbnb/secrets.env
+            ExecStartPre=+/usr/local/bin/agentbnb-secrets
+            ExecStart=/opt/agentbnb/app/node_modules/.bin/tsx apps/server/src/main.ts
+            Restart=always
+            RestartSec=3
+            NoNewPrivileges=true
+            PrivateTmp=true
+            ProtectSystem=strict
+            ReadWritePaths=/var/lib/agentbnb /opt/agentbnb
+
+            [Install]
+            WantedBy=multi-user.target
+            UNIT
+
+            cat > /etc/systemd/system/agentbnb-demo-site.service <<UNIT
+            [Unit]
+            Description=agentbnb demo site (Meshwork)
+            After=network-online.target
+
+            [Service]
+            User=agentbnb
+            WorkingDirectory=/opt/agentbnb/app
+            Environment=PATH=/usr/local/bin:/usr/bin:/bin
+            Environment=HOME=/opt/agentbnb
+            EnvironmentFile=/etc/agentbnb/demo-site.env
+            ExecStart=/opt/agentbnb/app/node_modules/.bin/tsx apps/demo-site/src/main.ts
+            Restart=always
+            RestartSec=3
+            NoNewPrivileges=true
+            PrivateTmp=true
+            ProtectSystem=strict
+            ReadWritePaths=/opt/agentbnb
+
+            [Install]
+            WantedBy=multi-user.target
+            UNIT
+
+            cat > /etc/systemd/system/caddy.service <<UNIT
+            [Unit]
+            Description=Caddy
+            After=network-online.target
+            Wants=network-online.target
+
+            [Service]
+            User=caddy
+            Environment=HOME=/var/lib/caddy
+            ExecStart=/usr/local/bin/caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+            Restart=always
+            RestartSec=3
+            AmbientCapabilities=CAP_NET_BIND_SERVICE
+            NoNewPrivileges=true
+            LimitNOFILE=65536
+
+            [Install]
+            WantedBy=multi-user.target
+            UNIT
+
+            systemctl daemon-reload
+            systemctl enable --now agentbnb-demo-site agentbnb-marketplace caddy
+          - IpDashed: !Join ["-", !Split [".", !GetAtt Address.PublicIp]]
+
+  AddressAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt Address.AllocationId
+      InstanceId: !Ref Server
+
+Outputs:
+  MarketplaceUrl:
+    Description: The marketplace. Agents and the renter console use this.
+    Value: !Sub
+      - https://market.${IpDashed}.sslip.io
+      - IpDashed: !Join ["-", !Split [".", !GetAtt Address.PublicIp]]
+  RenterConsoleUrl:
+    Value: !Sub
+      - https://market.${IpDashed}.sslip.io/console
+      - IpDashed: !Join ["-", !Split [".", !GetAtt Address.PublicIp]]
+  HostEndpoint:
+    Description: What a host's desktop app connects to.
+    Value: !Sub
+      - wss://market.${IpDashed}.sslip.io/hosts/connect
+      - IpDashed: !Join ["-", !Split [".", !GetAtt Address.PublicIp]]
+  DemoSiteUrl:
+    Description: The made-up professional network used for the demo.
+    Value: !Sub
+      - https://meshwork.${IpDashed}.sslip.io
+      - IpDashed: !Join ["-", !Split [".", !GetAtt Address.PublicIp]]
+  InstanceId:
+    Value: !Ref Server
+  SecretsPath:
+    Description: Parameter Store path the server reads payment keys from.
+    Value: !Sub /agentbnb/${AWS::StackName}

@@ -1,11 +1,12 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { CAPABILITIES } from "@agentbnb/protocol";
 import type { HostApp } from "../app.ts";
+import { explorerUrl } from "../settlement.ts";
 
-const asset = (name: string) => readFileSync(new URL(`./public/${name}`, import.meta.url));
 const COOKIE = "agentbnb_dashboard";
 
 export interface Dashboard {
@@ -66,7 +67,16 @@ function state(app: HostApp) {
         })),
       };
     }),
+    signInWindow: worker.hasSignInWindow,
     earnings: worker.earnings(),
+    revenue: {
+      today: worker.earnings(new Date().setHours(0, 0, 0, 0)).host,
+      last7Days: worker.earnings(Date.now() - 7 * 24 * 60 * 60 * 1000).host,
+      payments: worker
+        .payments()
+        .slice(0, 25)
+        .map((payment) => ({ at: payment.at, amount: payment.host, state: payment.state, url: explorerUrl(payment.paymentId) })),
+    },
     activity: entries.slice(-50).reverse(),
     activityTotal: entries.length,
     auditIntact: worker.auditIntact(),
@@ -81,8 +91,10 @@ function state(app: HostApp) {
  * and an Origin check on every change (which defeats requests forged by other
  * pages open in the same browser).
  */
-export async function startDashboard(app: HostApp, options: { port?: number } = {}): Promise<Dashboard> {
+export async function startDashboard(app: HostApp, options: { port?: number; assetsDir?: string } = {}): Promise<Dashboard> {
   const token = randomBytes(32).toString("base64url");
+  const asset = (name: string) =>
+    readFileSync(options.assetsDir ? join(options.assetsDir, name) : new URL(`./public/${name}`, import.meta.url));
   const files = {
     "/": { type: "text/html; charset=utf-8", body: asset("index.html") },
     "/app.js": { type: "text/javascript; charset=utf-8", body: asset("app.js") },
@@ -172,6 +184,12 @@ export async function startDashboard(app: HostApp, options: { port?: number } = 
       return { signedIn: await app.signIn(email, password) };
     }
     if (path === "/api/recheck-sign-in") return { signedIn: await app.recheckSignIn() };
+    if (path === "/api/open-sign-in") {
+      if (!worker.hasSignInWindow) throw new BadRequest("this app signs in through the form");
+      // The host signs in on the site itself, in a window of the separate browser profile. Nothing is typed here.
+      await worker.openSignInWindow();
+      return { signedIn: await app.recheckSignIn() };
+    }
     return undefined;
   }
 

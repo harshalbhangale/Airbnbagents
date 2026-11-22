@@ -48,6 +48,12 @@ section { margin-block: 28px; }
 p { margin: 0 0 8px; }
 .muted { color: var(--muted); }
 .small { font-size: 0.85rem; }
+.stats { margin-bottom: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.stats .card { padding: 14px; }
+.stats .figure { font-size: 1.6rem; }
+.state-confirmed { color: var(--ok-text); font-weight: 600; }
+.state-failed { color: var(--danger); font-weight: 600; }
+a { color: var(--accent); }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
 .card, .capability { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
 .capability { margin-top: 14px; }

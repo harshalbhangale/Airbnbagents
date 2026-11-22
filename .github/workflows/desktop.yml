@@ -1,0 +1,60 @@
+name: Desktop app
+
+# Builds the installers. Download them from the run's "Artifacts" section.
+# They are unsigned: macOS and Windows will warn before opening them.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/desktop/**"
+      - "apps/worker/**"
+      - "packages/**"
+      - ".github/workflows/desktop.yml"
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - "apps/worker/**"
+      - "packages/**"
+      - ".github/workflows/desktop.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS, os: macos-latest, files: "apps/desktop/release/*.dmg" }
+          - { name: Windows, os: windows-latest, files: "apps/desktop/release/*.exe" }
+          - { name: Linux, os: ubuntu-latest, files: "apps/desktop/release/*.AppImage" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - run: pnpm --filter @agentbnb/desktop run dist
+        env:
+          # The macOS build is ad-hoc signed (no certificate or secret involved), which Apple Silicon needs to run it
+          # at all. The packaging tool skips all signing on pull requests unless told otherwise.
+          CSC_FOR_PULL_REQUEST: "true"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agentbnb-${{ matrix.name }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+          retention-days: 14

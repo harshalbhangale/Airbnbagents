@@ -11,6 +11,7 @@
     <div>
       <h1>agentbnb host</h1>
       <p class="muted" id="worker-id"></p>
+      <p class="muted small" id="marketplace-status"></p>
     </div>
     <div class="top-actions">
       <span class="pill" id="status-pill" role="status">Loading</span>
@@ -32,6 +33,7 @@
           <button type="submit">Sign in</button>
           <p class="muted small">Typed into the site's own sign-in page inside the separate browser profile. Not saved.</p>
         </form>
+        <button type="button" id="open-sign-in-button" hidden>Open sign-in window</button>
         <button type="button" id="recheck-button" class="quiet">Check again</button>
       </article>
 
@@ -46,12 +48,23 @@
         <p class="muted small">Agents pay this address directly in USDC when a task completes.</p>
       </article>
 
-      <article class="card">
-        <h2>Earnings</h2>
-        <p class="figure" id="earnings-total">$0.00</p>
-        <p class="muted" id="earnings-count"></p>
-        <p class="muted small" id="marketplace-status"></p>
-      </article>
+    </section>
+
+    <section aria-labelledby="revenue-heading">
+      <h2 id="revenue-heading">Revenue</h2>
+      <div class="grid stats">
+        <div class="card"><p class="muted">Today</p><p class="figure" id="revenue-today">$0.00</p></div>
+        <div class="card"><p class="muted">Last 7 days</p><p class="figure" id="revenue-week">$0.00</p></div>
+        <div class="card"><p class="muted">All time</p><p class="figure" id="revenue-all">$0.00</p></div>
+      </div>
+      <p class="muted"><span id="earnings-count"></span> <span id="revenue-confirmation"></span></p>
+      <div class="table-wrap" id="payments-wrap" hidden>
+        <table>
+          <thead><tr><th scope="col">Time</th><th scope="col">Amount</th><th scope="col">Status</th><th scope="col">Transaction</th></tr></thead>
+          <tbody id="payment-rows"></tbody>
+        </table>
+      </div>
+      <p class="muted" id="payments-empty">No payments yet. You are paid in USDC each time an agent's task completes.</p>
     </section>
 
     <section aria-labelledby="rules-heading">
