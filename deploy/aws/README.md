@@ -53,9 +53,19 @@ Command to run one. Useful places on the server:
 - `journalctl -u agentbnb-marketplace`, `-u agentbnb-demo-site`, `-u caddy`
 - `/var/lib/agentbnb/accounts.jsonl` for renter accounts and credit
 
-To run a newer commit, update the stack with a new `Commit`. That replaces the
-server, which also clears renter accounts, so copy `accounts.jsonl` off first
-if it matters.
+**Running a newer commit.** The set-up script runs only when the server is
+first created, so changing the stack's `Commit` afterwards restarts the server
+without redeploying anything. Instead, run this on the server through Systems
+Manager Run Command:
+
+```sh
+agentbnb-deploy <full 40-character commit>
+```
+
+It fetches that commit, installs and restarts the services. Renter accounts
+are kept. Anything that changes the server itself (the set-up script, instance
+size) needs the server replaced, which clears renter accounts: copy
+`accounts.jsonl` off first if it matters.
 
 ## Limits
 

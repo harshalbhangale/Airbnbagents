@@ -14,7 +14,10 @@ Parameters:
   Commit:
     Type: String
     AllowedPattern: "^[0-9a-f]{40}$"
-    Description: Full git commit of the repository to run.
+    Description: >-
+      Full git commit of the repository to run when the server is first
+      created. Changing it later does not redeploy; use agentbnb-deploy on the
+      server for that.
   Repository:
     Type: String
     Default: harshalbhangale/Airbnbagents
@@ -175,6 +178,22 @@ Resources:
             chown agentbnb:agentbnb /run/agentbnb /run/agentbnb/secrets.env
             SECRETS
             chmod 755 /usr/local/bin/agentbnb-secrets
+
+            # Moves the running server to another commit: agentbnb-deploy <40-character commit>.
+            cat > /usr/local/bin/agentbnb-deploy <<'DEPLOY'
+            #!/bin/bash
+            set -euo pipefail
+            COMMIT="$1"
+            echo "$COMMIT" | grep -Eq '^[0-9a-f]{40}$' || { echo "usage: agentbnb-deploy <full commit>" >&2; exit 2; }
+            cd /opt/agentbnb/app
+            sudo -u agentbnb git fetch --quiet origin
+            sudo -u agentbnb git checkout --quiet --detach "$COMMIT"
+            sudo -u agentbnb env PATH=/usr/local/bin:/usr/bin:/bin HOME=/opt/agentbnb COREPACK_ENABLE_DOWNLOAD_PROMPT=0 \
+              PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 ELECTRON_SKIP_BINARY_DOWNLOAD=1 pnpm install --frozen-lockfile
+            systemctl restart agentbnb-demo-site agentbnb-marketplace
+            echo "now running $(sudo -u agentbnb git rev-parse --short HEAD)"
+            DEPLOY
+            chmod 755 /usr/local/bin/agentbnb-deploy
 
             cat > /etc/systemd/system/agentbnb-marketplace.service <<UNIT
             [Unit]
