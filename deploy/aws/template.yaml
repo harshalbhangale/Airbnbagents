@@ -75,7 +75,10 @@ Resources:
               # Payment keys are kept in Parameter Store under this stack's own path and read at start-up.
               - Effect: Allow
                 Action: [ssm:GetParametersByPath, ssm:GetParameters, ssm:GetParameter]
-                Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/agentbnb/${AWS::StackName}/*
+                Resource:
+                  # Listing by path is authorised against the path itself; reading a value against the parameter.
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/agentbnb/${AWS::StackName}
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/agentbnb/${AWS::StackName}/*
 
   InstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -170,11 +173,16 @@ Resources:
             umask 077
             mkdir -p /run/agentbnb
             : > /run/agentbnb/secrets.env
-            aws ssm get-parameters-by-path --region "$AWS_REGION" --path "$SECRETS_PATH" --with-decryption \
-              --query 'Parameters[].[Name,Value]' --output text 2>/dev/null |
-              while IFS=$'\t' read -r name value; do
-                [ -n "$name" ] && printf '%s=%s\n' "$(basename "$name")" "$value" >> /run/agentbnb/secrets.env
-              done || true
+            # If the settings cannot be read, say why in the service log and start without them: crypto payments still work.
+            if settings=$(aws ssm get-parameters-by-path --region "$AWS_REGION" --path "$SECRETS_PATH" --with-decryption \
+              --query 'Parameters[].[Name,Value]' --output text 2>&1); then
+              printf '%s\n' "$settings" | while IFS=$'\t' read -r name value; do
+                if [ -n "$name" ] && [ "$name" != "None" ]; then printf '%s=%s\n' "$(basename "$name")" "$value" >> /run/agentbnb/secrets.env; fi
+              done
+              echo "agentbnb: read $(wc -l < /run/agentbnb/secrets.env) payment setting(s) from $SECRETS_PATH"
+            else
+              echo "agentbnb: could not read payment settings from $SECRETS_PATH: $settings" >&2
+            fi
             chown agentbnb:agentbnb /run/agentbnb /run/agentbnb/secrets.env
             SECRETS
             chmod 755 /usr/local/bin/agentbnb-secrets
