@@ -200,7 +200,6 @@ describe("the dashboard in a browser", () => {
     expect(await page.textContent("#revenue-all")).toBe("$0.02");
     expect(await page.textContent("#revenue-today")).toBe("$0.02");
     expect(await page.textContent("#revenue-week")).toBe("$0.02");
-    expect(await page.textContent("#earnings-total")).toBe("$0.02");
     expect(await page.textContent("#revenue-confirmation")).toBe("$0.02 confirmed onchain.");
     expect(await page.getAttribute("#payment-rows a", "href")).toMatch(/^https:\/\/sepolia\.basescan\.org\/tx\/0x[0-9a-f]{64}$/);
     expect(app.worker.earnings()).toMatchObject({ payments: 1, host: 20_000, confirmed: { payments: 1, host: 20_000 } });

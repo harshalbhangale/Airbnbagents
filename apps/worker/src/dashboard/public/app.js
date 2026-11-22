@@ -84,8 +84,7 @@
     const payout = $("payout-input");
     if (document.activeElement !== payout) payout.value = s.payoutAddress || "";
 
-    $("earnings-total").textContent = usd(s.earnings.host);
-    $("earnings-count").textContent = `${s.earnings.payments} paid task${s.earnings.payments === 1 ? "" : "s"}`;
+    $("earnings-count").textContent = `${s.earnings.payments} paid task${s.earnings.payments === 1 ? "" : "s"}.`;
     const market = { off: "Not connected to a marketplace", connecting: "Connecting to the marketplace…", connected: "Listed on the marketplace", disconnected: "Marketplace connection lost, retrying", refused: "The marketplace refused this worker" };
     $("marketplace-status").textContent = market[s.marketplace.status] || "";
   }
