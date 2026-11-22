@@ -103,6 +103,11 @@ export class PaymentGate {
     } catch {
       throw new PaymentError("invalid_payment", "payment header could not be read");
     }
+    return this.verifyPayload(payload, challenge);
+  }
+
+  /** The same check for a payment that did not arrive as a header, such as one the marketplace's own wallet signed. */
+  async verifyPayload(payload: Payload, challenge: Challenge): Promise<VerifiedPayment> {
     const requirements = this.#server.findMatchingRequirements(challenge.requirements, payload);
     if (!requirements) throw new PaymentError("invalid_payment", "payment does not match the quoted price");
     let verdict;

@@ -17,8 +17,10 @@ export type AgentWallet = Parameters<typeof toClientEvmSigner>[0];
 export interface AgentClientOptions {
   /** Marketplace address. */
   baseUrl: string;
-  /** Needed for paid tasks. Without it, a task that costs money fails with `PaymentRequiredError`. */
+  /** Pay with crypto: the agent's own wallet pays each task in USDC, straight to the host. */
   wallet?: AgentWallet;
+  /** Pay by card: an account's API key. Tasks are charged to credit bought by card in the renter console. */
+  apiKey?: string;
   /** The most this client will pay for one task, in micro-dollars. Defaults to $0.10. */
   maxPriceMicroUsd?: number;
   fetch?: typeof fetch;
@@ -46,7 +48,23 @@ export interface TaskOutcome {
   /** The worker's signed receipt, already verified. */
   receipt: Receipt;
   /** Present only when the task completed and was paid for. */
-  payment: { transaction: string; network: string; amount: number; payTo: string } | null;
+  payment: {
+    transaction: string;
+    network: string;
+    amount: number;
+    payTo: string;
+    paidWith?: "crypto" | "credit";
+    /** Credit left after this task, when it was paid from credit. */
+    creditRemainingMicroUsd?: number;
+  } | null;
+}
+
+export interface AccountSummary {
+  accountId: string;
+  creditMicroUsd: number;
+  cardPayments: boolean;
+  topUpLimitsUsd: { min: number; max: number };
+  history: { kind: "topup" | "task"; amount: number; at: number; reference: string; capability?: string; transaction?: string }[];
 }
 
 export class PaymentRequiredError extends Error {
@@ -71,8 +89,18 @@ export class AgentClient {
   readonly #fetch: typeof fetch;
   readonly #maxPrice: number;
   readonly #payments: x402HTTPClient | null;
+  readonly #apiKey: string | null;
+
+  /** Opens a card-payment account. The API key is returned once; keep it somewhere safe. */
+  static async createAccount(baseUrl: string, fetchImpl: typeof fetch = fetch): Promise<{ accountId: string; apiKey: string }> {
+    const response = await fetchImpl(`${baseUrl.replace(/\/+$/, "")}/accounts`, { method: "POST" });
+    if (!response.ok) throw new MarketplaceError(response.status, "account_not_created");
+    return (await response.json()) as { accountId: string; apiKey: string };
+  }
 
   constructor(options: AgentClientOptions) {
+    if (options.wallet && options.apiKey) throw new TypeError("give either a wallet or an API key, not both");
+    this.#apiKey = options.apiKey ?? null;
     this.#baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.#fetch = options.fetch ?? fetch;
     this.#maxPrice = options.maxPriceMicroUsd ?? 100_000;
@@ -85,6 +113,33 @@ export class AgentClient {
     const response = await this.#fetch(`${this.#baseUrl}/workers`);
     if (!response.ok) throw new MarketplaceError(response.status, "list_failed");
     return ((await response.json()) as { workers: WorkerListing[] }).workers;
+  }
+
+  async #account<T>(path: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
+    if (!this.#apiKey) throw new TypeError("this needs an API key");
+    const response = await this.#fetch(`${this.#baseUrl}${path}`, {
+      method: init.method ?? "GET",
+      headers: { authorization: `Bearer ${this.#apiKey}`, ...(init.body ? { "content-type": "application/json" } : {}) },
+      body: init.body ? JSON.stringify(init.body) : undefined,
+    });
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    if (!response.ok) throw new MarketplaceError(response.status, body.error ?? "unknown");
+    return body as T;
+  }
+
+  /** Credit balance and history for the account behind this client's API key. */
+  getAccount(): Promise<AccountSummary> {
+    return this.#account("/account");
+  }
+
+  /** Starts a card top-up. Send a person to `checkoutUrl` to pay; then call `confirmTopUp`. */
+  createTopUp(amountUsd: number): Promise<{ topUpId: string; checkoutUrl: string }> {
+    return this.#account("/account/topups", { method: "POST", body: { amountUsd } });
+  }
+
+  /** Asks whether a top-up has been paid, crediting the account if so. Safe to call repeatedly. */
+  confirmTopUp(topUpId: string): Promise<{ status: "paid" | "pending"; creditMicroUsd: number }> {
+    return this.#account(`/account/topups/${encodeURIComponent(topUpId)}`);
   }
 
   async getWorker(workerKeyId: string): Promise<WorkerListing> {
@@ -109,14 +164,25 @@ export class AgentClient {
     const send = (headers: Record<string, string> = {}) =>
       this.#fetch(`${this.#baseUrl}/tasks`, {
         method: "POST",
-        headers: { "content-type": "application/json", ...headers },
+        headers: {
+          "content-type": "application/json",
+          ...(this.#apiKey ? { authorization: `Bearer ${this.#apiKey}`, "x-agentbnb-max-price": String(this.#maxPrice) } : {}),
+          ...headers,
+        },
         body: JSON.stringify(prepared.request),
       });
 
     let response = await send();
     if (response.status === 402) {
       const body = await response.json().catch(() => undefined);
-      if (!this.#payments) throw new PaymentRequiredError("this task costs money and no wallet was provided", null);
+      const credit = (body as { credit?: { requiredMicroUsd?: number; availableMicroUsd?: number } } | undefined)?.credit;
+      if (this.#apiKey) {
+        throw new PaymentRequiredError(
+          `not enough credit: this task costs ${credit?.requiredMicroUsd ?? "?"} micro-dollars and the account has ${credit?.availableMicroUsd ?? "?"}`,
+          credit?.requiredMicroUsd ?? null,
+        );
+      }
+      if (!this.#payments) throw new PaymentRequiredError("this task costs money and no wallet or API key was provided", null);
       const required = this.#payments.getPaymentRequiredResponse((name) => response.headers.get(name), body);
       const quoted = required.accepts[0];
       const price = quoted ? Number(quoted.amount) : NaN;

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>agentbnb for renters</title>
+  <link rel="stylesheet" href="/console/app.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>agentbnb for renters</h1>
+      <p class="muted">Rent capabilities on other people's devices for your agents. Pay only for tasks that complete.</p>
+    </div>
+    <div class="top-actions"><span class="pill" id="status-pill" role="status">Loading</span></div>
+  </header>
+
+  <p class="banner" id="banner" role="alert" hidden></p>
+
+  <main>
+    <section class="grid" aria-label="Ways to pay">
+      <article class="card">
+        <h2>Pay with crypto</h2>
+        <p>Your agent pays each task in USDC from its own wallet, straight to the host. No account needed.</p>
+        <pre><code>new AgentClient({ baseUrl, wallet })</code></pre>
+      </article>
+      <article class="card">
+        <h2>Pay by card</h2>
+        <p>Buy credit with a card. Each completed task is charged to your credit, and the host is still paid in USDC.</p>
+        <pre><code>new AgentClient({ baseUrl, apiKey })</code></pre>
+      </article>
+    </section>
+
+    <section aria-labelledby="account-heading">
+      <h2 id="account-heading">Your account</h2>
+
+      <div class="card" id="signed-out">
+        <p>An account is only needed for paying by card.</p>
+        <div class="row">
+          <button type="button" id="create-button">Create an account</button>
+          <form id="key-form">
+            <label>Or use an existing API key <input name="apiKey" id="key-input" autocomplete="off" spellcheck="false" placeholder="abnb_…" required></label>
+            <button type="submit" class="quiet">Use key</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="card" id="new-key" hidden>
+        <h3>Save your API key now</h3>
+        <p>This is the only time it is shown. Anyone who has it can spend your credit.</p>
+        <code class="key-box" id="new-key-value"></code>
+        <div class="row">
+          <button type="button" id="copy-key-button" class="quiet">Copy</button>
+          <button type="button" id="saved-key-button">I have saved it</button>
+        </div>
+      </div>
+
+      <div class="card" id="signed-in" hidden>
+        <p class="muted" id="account-id"></p>
+        <p class="figure" id="credit">$0.00</p>
+        <p class="muted">credit available</p>
+        <div id="top-up" hidden>
+          <h3>Add credit by card</h3>
+          <div class="row" id="top-up-buttons"></div>
+          <p class="muted small">You are sent to the card processor's own page to pay. Card details never touch agentbnb.</p>
+        </div>
+        <p class="muted" id="card-off" hidden>Paying by card is not switched on for this marketplace.</p>
+        <button type="button" id="sign-out-button" class="quiet">Forget this key on this device</button>
+      </div>
+    </section>
+
+    <section aria-labelledby="workers-heading">
+      <h2 id="workers-heading">Available now</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Capability</th><th scope="col">Price per task</th><th scope="col">Fields offered</th><th scope="col">Worker</th></tr></thead>
+          <tbody id="worker-rows"></tbody>
+        </table>
+      </div>
+      <p class="muted" id="workers-empty">No hosts are online right now.</p>
+    </section>
+
+    <section aria-labelledby="history-heading" id="history-section" hidden>
+      <h2 id="history-heading">Credit history</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Time</th><th scope="col">What</th><th scope="col">Amount</th><th scope="col">Host payment</th></tr></thead>
+          <tbody id="history-rows"></tbody>
+        </table>
+      </div>
+      <p class="muted" id="history-empty">Nothing yet.</p>
+    </section>
+  </main>
+  <script src="/console/app.js"></script>
+</body>
+</html>

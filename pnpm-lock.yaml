@@ -40,6 +40,9 @@ importers:
       '@x402/evm':
         specifier: 2.32.0
         version: 2.32.0(typescript@5.9.3)
+      viem:
+        specifier: ^2.21.0
+        version: 2.58.4(typescript@5.9.3)(zod@3.25.76)
       ws:
         specifier: ^8.18.0
         version: 8.21.0
@@ -59,9 +62,9 @@ importers:
       '@types/ws':
         specifier: ^8.5.13
         version: 8.18.2
-      viem:
-        specifier: ^2.21.0
-        version: 2.58.4(typescript@5.9.3)(zod@3.25.76)
+      playwright:
+        specifier: 1.63.0
+        version: 1.63.0
 
   apps/worker:
     dependencies:
