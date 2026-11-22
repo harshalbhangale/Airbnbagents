@@ -201,13 +201,36 @@ describe("earnings ledger", () => {
     expect(ledger.entries()).toEqual([]);
   });
 
+  it("separates payments confirmed onchain from those still awaiting a check", () => {
+    const ledger = new EarningsLedger();
+    ledger.record("base-sepolia:0xaaa1", "automation_session", quote(session, { sessions: 1 }), 1000);
+    ledger.record("base-sepolia:0xbbb2", "automation_session", quote(session, { sessions: 1 }), 2000);
+    ledger.record("base-sepolia:0xccc3", "automation_session", quote(session, { sessions: 1 }), 3000);
+    expect(ledger.summary()).toMatchObject({ payments: 3, host: 54_000, confirmed: { payments: 0, host: 0 }, awaiting: { payments: 3, host: 54_000 } });
+
+    expect(ledger.resolve("base-sepolia:0xaaa1", "confirmed")).toBe(true);
+    expect(ledger.resolve("base-sepolia:0xbbb2", "failed")).toBe(true);
+    // A payment that failed its check counts for nothing.
+    expect(ledger.summary()).toMatchObject({ payments: 2, host: 36_000, confirmed: { payments: 1, host: 18_000 }, awaiting: { payments: 1, host: 18_000 } });
+    expect(ledger.summary().byKind.automation_session).toEqual({ payments: 2, host: 36_000 });
+
+    // A confirmed payment cannot be un-confirmed, and an unknown one cannot be resolved.
+    expect(ledger.resolve("base-sepolia:0xaaa1", "failed")).toBe(false);
+    expect(ledger.resolve("base-sepolia:0xzzz9", "confirmed")).toBe(false);
+    expect(ledger.get("base-sepolia:0xaaa1")?.state).toBe("confirmed");
+    expect(ledger.entries().map((e) => e.at)).toEqual([3000, 2000, 1000]);
+  });
+
   it("survives a restart", () => {
     const dir = mkdtempSync(join(tmpdir(), "agentbnb-ledger-"));
     try {
       const file = join(dir, "earnings.jsonl");
-      new EarningsLedger(file).record("base-sepolia:0xddd4", "dedicated_node", quote(dedicated, { terms: 1 }), 5);
+      const first = new EarningsLedger(file);
+      first.record("base-sepolia:0xddd4", "dedicated_node", quote(dedicated, { terms: 1 }), 5);
+      first.resolve("base-sepolia:0xddd4", "confirmed");
       const reopened = new EarningsLedger(file);
       expect(reopened.summary().host).toBe(108_000_000);
+      expect(reopened.summary().confirmed.host).toBe(108_000_000);
       expect(reopened.record("base-sepolia:0xddd4", "dedicated_node", quote(dedicated, { terms: 1 }), 6)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });

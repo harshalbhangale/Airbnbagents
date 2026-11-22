@@ -89,7 +89,7 @@ export function connectToMarketplace(worker: HostWorker, options: MarketplaceLin
           typeof transaction === "string" && /^0x[0-9a-f]{64}$/.test(transaction) &&
           typeof amount === "number" && Number.isSafeInteger(amount) && amount > 0
         ) {
-          worker.recordSettlement({ network, transaction, amount, at: Date.now() });
+          worker.recordSettlement({ network, transaction, amount, payTo: options.payoutAddress, at: Date.now() });
         }
       }
     });
