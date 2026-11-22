@@ -14,6 +14,30 @@ export type { GuardStats } from "./site-browser.ts";
 export type IsolatedBrowserOptions = SiteBrowserOptions;
 
 /**
+ * The browser flag that makes every host name unresolvable except the ones the
+ * isolated profile legitimately needs: the allowed site, and any network proxy
+ * the machine is configured to use. Without the proxy exception the browser
+ * cannot reach the proxy at all and nothing loads.
+ *
+ * Behind a proxy this layer does less, because the proxy looks names up, not
+ * the browser. Requests to other sites are then stopped by interception alone.
+ */
+export function resolverRules(siteHostname: string, env: NodeJS.ProcessEnv = process.env): string {
+  const allowed = new Set([siteHostname]);
+  for (const name of ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"]) {
+    const value = env[name];
+    if (!value) continue;
+    try {
+      const { hostname } = new URL(value.includes("://") ? value : `http://${value}`);
+      if (hostname) allowed.add(hostname.replace(/^\[|\]$/g, ""));
+    } catch {
+      /* not a usable proxy address: nothing to allow */
+    }
+  }
+  return `MAP * ~NOTFOUND${[...allowed].map((host) => `, EXCLUDE ${host}`).join("")}`;
+}
+
+/**
  * The isolated profile as a Playwright-driven Chromium.
  *
  * The network guard has to fail closed. Intercepting requests from outside
@@ -54,7 +78,7 @@ export class IsolatedBrowser implements SiteBrowser {
       serviceWorkers: "block",
       acceptDownloads: false,
       permissions: [],
-      args: [`--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE ${hostname}`],
+      args: [`--host-resolver-rules=${resolverRules(hostname)}`],
     });
     const browser = new IsolatedBrowser(context, origin, options.blockedPathPrefixes);
 

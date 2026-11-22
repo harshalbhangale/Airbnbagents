@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resolverRules } from "../src/browser.ts";
 import { guardDecision } from "../src/site-browser.ts";
 
 const rules = { origin: "https://meshwork.test", blockedPathPrefixes: ["/messages", "/api/messages", "/settings"] };
@@ -33,5 +34,25 @@ describe("network guard", () => {
     expect(guardDecision({ url: "https://meshwork.test/login", method: "POST" }, setup)).toBe("allow");
     expect(guardDecision({ url: "https://meshwork.test/messages", method: "GET" }, setup)).toBe("blocked_path");
     expect(guardDecision({ url: "https://evil.example/", method: "POST" }, setup)).toBe("off_origin");
+  });
+});
+
+describe("host-name restriction", () => {
+  it("lets the browser resolve the allowed site and nothing else", () => {
+    expect(resolverRules("meshwork.test", {})).toBe("MAP * ~NOTFOUND, EXCLUDE meshwork.test");
+  });
+
+  it("also lets it reach a configured network proxy, or nothing would load", () => {
+    expect(resolverRules("meshwork.test", { HTTPS_PROXY: "http://127.0.0.1:3128" })).toBe("MAP * ~NOTFOUND, EXCLUDE meshwork.test, EXCLUDE 127.0.0.1");
+    expect(resolverRules("meshwork.test", { https_proxy: "http://user:secret@proxy.corp.example:8080", HTTP_PROXY: "proxy.corp.example:8080" })).toBe(
+      "MAP * ~NOTFOUND, EXCLUDE meshwork.test, EXCLUDE proxy.corp.example",
+    );
+    expect(resolverRules("meshwork.test", { ALL_PROXY: "socks5://[::1]:1080" })).toBe("MAP * ~NOTFOUND, EXCLUDE meshwork.test, EXCLUDE ::1");
+  });
+
+  it("never puts proxy credentials or junk into the browser flag", () => {
+    const rules = resolverRules("meshwork.test", { HTTPS_PROXY: "http://user:secret@proxy.corp.example:8080", HTTP_PROXY: "http://", ALL_PROXY: "::::" });
+    expect(rules).not.toContain("secret");
+    expect(rules).toBe("MAP * ~NOTFOUND, EXCLUDE meshwork.test, EXCLUDE proxy.corp.example");
   });
 });

@@ -83,8 +83,10 @@ A demo instance is running from it:
 - Renter console: https://market.35-154-72-7.sslip.io/console
 - Demo site: https://meshwork.35-154-72-7.sslip.io
 
-It is on the Base Sepolia testnet with crypto payments only, and it is a demo:
-one server, no backups, and addresses that change if the stack is recreated.
+It is on the Base Sepolia testnet. Crypto payments are on, and card payments
+are on through Dodo Payments in test mode, so its checkout takes Dodo's test
+cards and no real money. It is a demo: one server, no backups, and addresses
+that change if the stack is recreated.
 The desktop app has been run against it end to end, with an agent paying for
 tasks through it over the internet.
 
@@ -187,9 +189,11 @@ Things to know before taking real card payments:
 - **The processor's fee comes out of each top-up**, which is why the minimum is $5.
 - **The treasury must be kept funded.** If it runs dry, card-paid tasks are
   refused and the renter's credit is untouched.
-- The automated tests run the real Dodo and Stripe client code against local
-  stand-ins built from each one's documented API. The flow has not yet been
-  run against either processor itself.
+- The Dodo flow has been run end to end against Dodo itself in test mode,
+  through the hosted demo: a $500 top-up paid with Dodo's test card was
+  confirmed, credited once, and a task was then paid from that credit, with
+  the host's USDC payment confirmed onchain. Stripe has only been run against
+  a local stand-in built from its documented API.
 - Top-ups are confirmed by asking the processor, not by webhook. Dodo
   recommends webhooks as the source of truth; adding one would make
   confirmation independent of the renter returning to the console.
@@ -253,7 +257,9 @@ layer can create one.
   held for a decision when its tab closes would otherwise be let through. On
   the command-line worker, refusing non-GET requests and other sites addressed
   by raw IP still relies on interception, with tabs drained before they close;
-  the desktop app judges every request before it is sent.
+  the same is true of all other sites when the machine uses a network proxy,
+  since the proxy looks names up, not the browser. The desktop app judges
+  every request before it is sent.
 - **Not the task from the host.** The host's machine decrypts and runs the
   task, so the host can see what was asked and what was returned.
 - **The outbound scan is a backstop, not a guarantee.** It is pattern-based.
