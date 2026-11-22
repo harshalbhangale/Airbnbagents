@@ -49,7 +49,9 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
       - run: pnpm --filter @agentbnb/desktop run dist
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          # The macOS build is ad-hoc signed (no certificate or secret involved), which Apple Silicon needs to run it
+          # at all. The packaging tool skips all signing on pull requests unless told otherwise.
+          CSC_FOR_PULL_REQUEST: "true"
       - uses: actions/upload-artifact@v4
         with:
           name: agentbnb-${{ matrix.name }}
