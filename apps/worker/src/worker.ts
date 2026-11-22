@@ -12,7 +12,7 @@ import {
   type Listing,
   type SealedOutput,
 } from "@agentbnb/privacy";
-import { IsolatedBrowser, type GuardStats } from "./browser.ts";
+import type { GuardStats, SiteBrowser, SiteBrowserOptions } from "./site-browser.ts";
 import { profileReadExecutor } from "./capabilities/profile-read.ts";
 
 export interface HostWorkerOptions {
@@ -22,6 +22,11 @@ export interface HostWorkerOptions {
   siteOrigin: string;
   headless?: boolean;
   now?: () => number;
+  /**
+   * Supplies the isolated browser. Defaults to a Playwright-driven Chromium;
+   * the desktop app passes its own built-in browser instead.
+   */
+  createBrowser?: (options: SiteBrowserOptions) => Promise<SiteBrowser>;
 }
 
 /** A worker's public listing: what it can do, on what terms, and at what price. */
@@ -58,7 +63,7 @@ const BLOCKED_PATHS = ["/messages", "/api/messages", "/settings", "/logout"] as 
  */
 export class HostWorker {
   readonly #layer: PrivacyLayer;
-  readonly #browser: IsolatedBrowser;
+  readonly #browser: SiteBrowser;
   readonly #audit: AuditLog;
   readonly #policyFile: string;
   readonly #origin: string;
@@ -70,7 +75,7 @@ export class HostWorker {
   private constructor(
     keys: WorkerKeys,
     layer: PrivacyLayer,
-    browser: IsolatedBrowser,
+    browser: SiteBrowser,
     audit: AuditLog,
     origin: string,
     files: { policy: string; offers: string; earnings: string },
@@ -99,12 +104,16 @@ export class HostWorker {
       ? JSON.parse(readFileSync(policyFile, "utf8"))
       : defaultPolicy(CAPABILITIES);
 
-    const browser = await IsolatedBrowser.launch({
+    const browserOptions: SiteBrowserOptions = {
       profileDir: join(options.dataDir, "browser-profile"),
       allowedOrigin: origin,
       blockedPathPrefixes: BLOCKED_PATHS,
       headless: options.headless,
-    });
+    };
+    // Loaded on demand so an app that brings its own browser does not need Playwright installed.
+    const browser = options.createBrowser
+      ? await options.createBrowser(browserOptions)
+      : await (await import("./browser.ts")).IsolatedBrowser.launch(browserOptions);
     try {
       const layer = new PrivacyLayer({
         keys,
@@ -208,21 +217,30 @@ export class HostWorker {
    * does not store them and they are never sent anywhere else.
    */
   async signIn(email: string, password: string): Promise<boolean> {
-    return this.#browser.withSetupPage(async (page) => {
-      await page.goto(`${this.#origin}/login`, { waitUntil: "domcontentloaded" });
-      await page.fill('input[name="email"]', email);
-      await page.fill('input[name="password"]', password);
-      await Promise.all([page.waitForURL((url) => url.pathname !== "/login" || url.search !== ""), page.click('button[type="submit"]')]);
-      return new URL(page.url()).pathname === "/feed";
+    if (!this.#browser.submitForm) throw new Error("this browser signs in through its own window");
+    const { finalUrl } = await this.#browser.submitForm({
+      url: `${this.#origin}/login`,
+      fields: { 'input[name="email"]': email, 'input[name="password"]': password },
+      submit: 'button[type="submit"]',
     });
+    return new URL(finalUrl).pathname === "/feed";
+  }
+
+  /** True when the host can sign in through a window of their own rather than by handing over details. */
+  get hasSignInWindow(): boolean {
+    return typeof this.#browser.openSignIn === "function";
+  }
+
+  /** Opens the sign-in window and waits until the host has finished with it. */
+  async openSignInWindow(): Promise<void> {
+    if (!this.#browser.openSignIn) throw new Error("this browser has no sign-in window");
+    await this.#browser.openSignIn(`${this.#origin}/login`);
   }
 
   /** Whether the isolated profile currently has a signed-in session on the site. */
   async isSignedIn(): Promise<boolean> {
-    return this.#browser.withSetupPage(async (page) => {
-      await page.goto(`${this.#origin}/feed`, { waitUntil: "domcontentloaded" });
-      return new URL(page.url()).pathname === "/feed";
-    });
+    const { finalUrl } = await this.#browser.visit(`${this.#origin}/feed`);
+    return new URL(finalUrl).pathname === "/feed";
   }
 
   get paused(): boolean {
