@@ -217,6 +217,22 @@ export class HostWorker {
     });
   }
 
+  /** Whether the isolated profile currently has a signed-in session on the site. */
+  async isSignedIn(): Promise<boolean> {
+    return this.#browser.withSetupPage(async (page) => {
+      await page.goto(`${this.#origin}/feed`, { waitUntil: "domcontentloaded" });
+      return new URL(page.url()).pathname === "/feed";
+    });
+  }
+
+  get paused(): boolean {
+    return this.#layer.paused;
+  }
+
+  get siteOrigin(): string {
+    return this.#origin;
+  }
+
   async close(): Promise<void> {
     await this.#browser.close();
   }
