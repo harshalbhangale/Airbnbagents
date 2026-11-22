@@ -100,6 +100,7 @@ describe("buying credit by card", () => {
       "line_items[0][price_data][unit_amount]": "500",
       "line_items[0][quantity]": "1",
       success_url: `${market.url}/console?topup={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${market.url}/console`,
     });
   });
 

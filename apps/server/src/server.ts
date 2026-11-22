@@ -288,20 +288,21 @@ export async function startMarketplace(options: MarketplaceOptions): Promise<Mar
       const checkout = await card.processor.createCheckout({
         accountId,
         amountCents: amountUsd * 100,
-        successUrl: `${baseUrl}/console?topup={CHECKOUT_SESSION_ID}`,
-        cancelUrl: `${baseUrl}/console`,
+        returnUrl: `${baseUrl}/console`,
       });
       json(res, 201, { topUpId: checkout.id, checkoutUrl: checkout.url });
       return true;
     }
-    const topUp = /^GET \/account\/topups\/(cs_[A-Za-z0-9_]{8,250})$/.exec(route);
+    const topUp = /^GET \/account\/topups\/([A-Za-z0-9_]{8,260})$/.exec(route);
     if (topUp) {
       if (!card) return json(res, 503, { error: "card_payments_unavailable" }), true;
       const status = await card.processor.getCheckout(topUp[1]!);
-      // A checkout can only ever credit the account it was opened for.
-      if (status.accountId !== accountId) return json(res, 404, { error: "top_up_not_found" }), true;
-      if (status.paid && status.amountCents > 0) accounts.credit(accountId, status.amountCents * 10_000, `card:${topUp[1]}`);
-      json(res, 200, { status: status.paid ? "paid" : "pending", creditMicroUsd: accounts.available(accountId) });
+      // A checkout can only ever credit the account it was opened for. Until the processor can say
+      // whose it is, it is simply pending.
+      if (status.accountId !== null && status.accountId !== accountId) return json(res, 404, { error: "top_up_not_found" }), true;
+      const paid = status.paid && status.accountId === accountId && status.amountCents > 0;
+      if (paid) accounts.credit(accountId, status.amountCents * 10_000, `card:${topUp[1]}`);
+      json(res, 200, { status: paid ? "paid" : "pending", creditMicroUsd: accounts.available(accountId) });
       return true;
     }
     return false;

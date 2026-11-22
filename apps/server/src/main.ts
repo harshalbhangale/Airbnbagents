@@ -1,5 +1,5 @@
 import { privateKeyToAccount } from "viem/accounts";
-import { StripeProcessor } from "./cards.ts";
+import { DodoProcessor, StripeProcessor } from "./cards.ts";
 import { startMarketplace } from "./server.ts";
 import { Treasury } from "./treasury.ts";
 
@@ -11,15 +11,23 @@ import { Treasury } from "./treasury.ts";
  *   X402_NETWORK            CAIP-2 network (default Base Sepolia)
  *   ACCOUNTS_FILE           where renter accounts and credit are kept
  *
- * Card payments switch on when both of these are set:
- *   STRIPE_SECRET_KEY       Stripe secret key (use a test-mode key off mainnet)
+ * Card payments switch on when a card processor and a treasury wallet are both set:
  *   TREASURY_PRIVATE_KEY    the marketplace wallet that pays hosts for card renters; it needs USDC on the network
+ * and one of
+ *   DODO_PAYMENTS_API_KEY + DODO_PRODUCT_ID   Dodo Payments; the product is a one-time "Pay What You Want" product in USD
+ *   STRIPE_SECRET_KEY                         Stripe
+ * Use test-mode keys anywhere but production.
  */
-const stripeKey = process.env.STRIPE_SECRET_KEY;
 const treasuryKey = process.env.TREASURY_PRIVATE_KEY;
+const processor =
+  process.env.DODO_PAYMENTS_API_KEY && process.env.DODO_PRODUCT_ID
+    ? new DodoProcessor({ apiKey: process.env.DODO_PAYMENTS_API_KEY, productId: process.env.DODO_PRODUCT_ID })
+    : process.env.STRIPE_SECRET_KEY
+      ? new StripeProcessor({ secretKey: process.env.STRIPE_SECRET_KEY })
+      : undefined;
 const card =
-  stripeKey && treasuryKey && /^0x[0-9a-fA-F]{64}$/.test(treasuryKey)
-    ? { processor: new StripeProcessor({ secretKey: stripeKey }), treasury: new Treasury(privateKeyToAccount(treasuryKey as `0x${string}`)) }
+  processor && treasuryKey && /^0x[0-9a-fA-F]{64}$/.test(treasuryKey)
+    ? { processor, treasury: new Treasury(privateKeyToAccount(treasuryKey as `0x${string}`)) }
     : undefined;
 
 const marketplace = await startMarketplace({
@@ -33,4 +41,8 @@ const marketplace = await startMarketplace({
 console.log(`agentbnb marketplace listening at ${marketplace.url}`);
 console.log(`host workers connect to ${marketplace.hostUrl}`);
 console.log(`renter console at ${marketplace.url}/console`);
-console.log(card ? `card payments on, treasury ${card.treasury.address}` : "card payments off (set STRIPE_SECRET_KEY and TREASURY_PRIVATE_KEY to turn them on)");
+console.log(
+  card
+    ? `card payments on through ${processor instanceof DodoProcessor ? "Dodo Payments" : "Stripe"}, treasury ${card.treasury.address}`
+    : "card payments off (set a card processor's keys and TREASURY_PRIVATE_KEY to turn them on)",
+);

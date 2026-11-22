@@ -133,10 +133,10 @@ A renter opens an account in the renter console (`/console` on the
 marketplace), buys credit by card, and gives their agent the account's API key
 (`new AgentClient({ baseUrl, apiKey })`).
 
-1. Buying credit sends the renter to Stripe's own checkout page. Card details
-   never reach agentbnb. When they return, the marketplace asks Stripe whether
-   the payment went through and adds the credit. A payment can credit only the
-   account it was opened for, and only once.
+1. Buying credit sends the renter to the card processor's own checkout page.
+   Card details never reach agentbnb. When they return, the marketplace asks
+   the processor whether the payment went through and adds the credit. A
+   payment can credit only the account it was opened for, and only once.
 2. When the agent runs a task, the marketplace holds the price from the
    renter's credit and has its own wallet (the treasury) pay the host through
    the same x402 payment as above.
@@ -144,8 +144,18 @@ marketplace), buys credit by card, and gives their agent the account's API key
    If the task is denied, rejected, withheld or fails, or settlement fails,
    the credit is released.
 
-Card payments are on when the marketplace is started with `STRIPE_SECRET_KEY`
-and `TREASURY_PRIVATE_KEY`, and the treasury wallet holds USDC on the network.
+Two card processors are supported. Card payments are on when the marketplace
+is started with one of them plus `TREASURY_PRIVATE_KEY`, and the treasury
+wallet holds USDC on the network.
+
+| Processor | Settings | Set-up needed |
+|---|---|---|
+| Dodo Payments | `DODO_PAYMENTS_API_KEY`, `DODO_PRODUCT_ID` | One product in the Dodo dashboard: one-time, "Pay What You Want" switched on, priced in USD, minimum no higher than the smallest top-up. Its id is `DODO_PRODUCT_ID`. The API key needs write access to payments. |
+| Stripe | `STRIPE_SECRET_KEY` | None |
+
+A Dodo test key (`dodo_test_…`) talks to Dodo's test host and a live key to
+its live host. Dodo may add tax on top of a top-up; credit is the amount
+asked for, not the tax.
 
 Things to know before taking real card payments:
 
@@ -153,11 +163,15 @@ Things to know before taking real card payments:
   the crypto path, where it never holds funds, and it carries obligations
   (refunds, chargebacks, and in many places money-services rules) that need
   proper advice.
-- **Stripe's fee comes out of each top-up**, which is why the minimum is $5.
+- **The processor's fee comes out of each top-up**, which is why the minimum is $5.
 - **The treasury must be kept funded.** If it runs dry, card-paid tasks are
   refused and the renter's credit is untouched.
-- The automated tests run the real Stripe client code against a local
-  stand-in for Stripe. The flow has not yet been run against Stripe itself.
+- The automated tests run the real Dodo and Stripe client code against local
+  stand-ins built from each one's documented API. The flow has not yet been
+  run against either processor itself.
+- Top-ups are confirmed by asking the processor, not by webhook. Dodo
+  recommends webhooks as the source of truth; adding one would make
+  confirmation independent of the renter returning to the console.
 - Anyone can open an account, and the console keeps the API key in the
   browser's local storage. Both want tightening before a public launch.
 

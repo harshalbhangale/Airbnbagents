@@ -8,6 +8,13 @@
   };
   const usd = (micro) => `$${(Math.abs(micro) / 1e6).toFixed(6).replace(/0{1,4}$/, "")}`;
   const KEY = "agentbnb.apiKey";
+  const PENDING = "agentbnb.pendingTopUp";
+  const TOP_UP_ID = /^[A-Za-z0-9_]{8,260}$/;
+  const pending = {
+    get: () => { try { return localStorage.getItem(PENDING); } catch { return null; } },
+    set: (value) => { try { localStorage.setItem(PENDING, value); } catch { /* confirmation then relies on the address */ } },
+    clear: () => { try { localStorage.removeItem(PENDING); } catch { /* nothing stored */ } },
+  };
   const stored = {
     get: () => { try { return localStorage.getItem(KEY); } catch { return null; } },
     set: (value) => { try { localStorage.setItem(KEY, value); } catch { /* stays for this page only */ } },
@@ -113,7 +120,9 @@
 
   async function topUp(amountUsd) {
     try {
-      const { checkoutUrl } = await api("/account/topups", { method: "POST", body: { amountUsd } });
+      const { checkoutUrl, topUpId } = await api("/account/topups", { method: "POST", body: { amountUsd } });
+      // Remembered here because not every card processor hands the reference back when it returns the renter.
+      pending.set(topUpId);
       location.assign(checkoutUrl);
     } catch {
       showBanner("The card payment page could not be opened. Try again in a moment.");
@@ -127,6 +136,7 @@
       try {
         const result = await api(`/account/topups/${encodeURIComponent(id)}`);
         if (result.status === "paid") {
+          pending.clear();
           showBanner("");
           return loadAccount();
         }
@@ -135,7 +145,7 @@
       }
       await new Promise((resolve) => setTimeout(resolve, 1500));
     }
-    showBanner("The card payment has not gone through yet. Reload this page to check again.");
+    showBanner("The card payment has not gone through yet. Reload this page to check again, or add credit again if you did not finish paying.");
   }
 
   $("create-button").addEventListener("click", async () => {
@@ -180,7 +190,10 @@
     $("status-pill").textContent = "Marketplace not reachable";
     $("status-pill").className = "pill warn";
   }).then(loadAccount).then(() => {
-    if (returning && apiKey && /^cs_[A-Za-z0-9_]{8,250}$/.test(returning)) return confirmTopUp(returning);
+    // Coming back from the card page: use the reference in the address if there is one, else the one remembered here.
+    const fromAddress = returning && returning !== "return" && TOP_UP_ID.test(returning) ? returning : null;
+    const id = fromAddress || (returning ? pending.get() : null);
+    if (id && apiKey && TOP_UP_ID.test(id)) return confirmTopUp(id);
   });
   setInterval(() => loadWorkers().catch(() => {}), 10000);
 })();
