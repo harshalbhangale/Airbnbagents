@@ -103,3 +103,4 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .row form input { width: 90px; }
 pre { margin: 8px 0 0; padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; overflow-x: auto; font-size: 0.82rem; }
 .amount-in { color: var(--ok-text); font-weight: 600; }
+#top-up .banner { max-width: none; margin: 8px 0 12px; padding: 10px 12px; }

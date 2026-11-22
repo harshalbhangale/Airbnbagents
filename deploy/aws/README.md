@@ -39,10 +39,13 @@ Card payments need `TREASURY_PRIVATE_KEY` plus either `DODO_PAYMENTS_API_KEY`
 and `DODO_PRODUCT_ID`, or `STRIPE_SECRET_KEY`. Without them the marketplace
 runs with crypto payments only.
 
-**Do not pair a live card key with the testnet.** On the default network,
-hosts are paid in testnet USDC, which is worth nothing. Taking real card money
-for that would be charging people for a demo. Use a test-mode card key with
-the testnet, and a live one only with `Network` set to Base mainnet.
+**Think before pairing a live card key with the testnet.** On the default
+network, hosts are paid in testnet USDC, which is worth nothing, so a live
+card key means real money is taken for a demo. A test-mode card key is the
+safer choice there. If a live key is used on the testnet anyway, keep
+`TOP_UP_MAX_USD` low (it can be stored alongside the keys); the renter console
+shows a notice next to the pay buttons whenever the marketplace is on a test
+network.
 
 ## Looking after it
 

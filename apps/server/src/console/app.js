@@ -38,10 +38,13 @@
 
   const EXPLORERS = { "eip155:84532": "https://sepolia.basescan.org/tx/", "eip155:8453": "https://basescan.org/tx/" };
   let network = null;
+  let testnet = false;
 
   async function loadWorkers() {
     const [{ workers }, health] = await Promise.all([api("/workers"), api("/health")]);
     network = health.network;
+    testnet = Boolean(health.testnet);
+    $("testnet-notice").hidden = !testnet;
     const rows = [];
     for (const worker of workers) {
       for (const offer of worker.offers) {
@@ -74,7 +77,8 @@
     $("card-off").hidden = account.cardPayments;
 
     const { min, max } = account.topUpLimitsUsd;
-    const buttons = [5, 10, 25, 50].filter((amount) => amount >= min && amount <= max).map((amount) => {
+    const amounts = [5, 10, 25, 50].filter((amount) => amount >= min && amount <= max);
+    const buttons = (amounts.length ? amounts : [min]).map((amount) => {
       const button = el("button", { type: "button", textContent: `Add $${amount}` });
       button.addEventListener("click", () => topUp(amount));
       return button;

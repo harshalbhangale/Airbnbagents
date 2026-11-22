@@ -57,6 +57,7 @@ export interface Marketplace {
 }
 
 const MAX_BODY = 300_000;
+const MAINNETS: ReadonlySet<string> = new Set(["eip155:8453"]);
 
 class Unauthorized extends Error {}
 
@@ -321,7 +322,16 @@ export async function startMarketplace(options: MarketplaceOptions): Promise<Mar
     const route = `${req.method} ${path}`;
     Promise.resolve()
       .then(() => {
-        if (route === "GET /health") return json(res, 200, { ok: true, workers: hub.workers().length, network: gate.network });
+        if (route === "GET /health") {
+          return json(res, 200, {
+            ok: true,
+            workers: hub.workers().length,
+            network: gate.network,
+            // On a test network hosts are paid in tokens with no value. The console says so wherever real money is asked for.
+            testnet: !MAINNETS.has(gate.network),
+            cardPayments: Boolean(card),
+          });
+        }
         if (route === "GET /workers") return json(res, 200, { workers: hub.workers().map(publicWorker) });
         const one = /^GET \/workers\/([0-9a-f]{16})$/.exec(route);
         if (one) {

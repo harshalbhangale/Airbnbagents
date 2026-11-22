@@ -17,6 +17,8 @@ import { Treasury } from "./treasury.ts";
  *   DODO_PAYMENTS_API_KEY + DODO_PRODUCT_ID   Dodo Payments; the product is a one-time "Pay What You Want" product in USD
  *   STRIPE_SECRET_KEY                         Stripe
  * Use test-mode keys anywhere but production.
+ *
+ *   TOP_UP_MIN_USD, TOP_UP_MAX_USD   smallest and largest card top-up, in whole dollars (default 5 and 500)
  */
 const treasuryKey = process.env.TREASURY_PRIVATE_KEY;
 const processor =
@@ -30,6 +32,10 @@ const card =
     ? { processor, treasury: new Treasury(privateKeyToAccount(treasuryKey as `0x${string}`)) }
     : undefined;
 
+const dollars = (value: string | undefined, fallback: number) => (value && /^\d{1,4}$/.test(value) ? Number(value) : fallback);
+const topUpLimitsUsd = { min: dollars(process.env.TOP_UP_MIN_USD, 5), max: dollars(process.env.TOP_UP_MAX_USD, 500) };
+if (topUpLimitsUsd.min < 1 || topUpLimitsUsd.max < topUpLimitsUsd.min) throw new Error("TOP_UP_MIN_USD and TOP_UP_MAX_USD do not make a valid range");
+
 const marketplace = await startMarketplace({
   port: Number(process.env.PORT ?? 4200),
   publicUrl: process.env.PUBLIC_URL,
@@ -37,6 +43,7 @@ const marketplace = await startMarketplace({
   network: process.env.X402_NETWORK ?? "eip155:84532",
   accountsFile: process.env.ACCOUNTS_FILE ?? ".agentbnb/accounts.jsonl",
   card,
+  topUpLimitsUsd,
 });
 console.log(`agentbnb marketplace listening at ${marketplace.url}`);
 console.log(`host workers connect to ${marketplace.hostUrl}`);

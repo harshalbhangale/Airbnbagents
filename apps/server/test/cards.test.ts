@@ -82,6 +82,36 @@ describe("renter accounts", () => {
     expect((await fetch(`${market.url}/account`)).status).toBe(401);
   });
 
+  it("tells clients whether it is on a test network and whether cards are on", async () => {
+    expect(await (await fetch(`${market.url}/health`)).json()).toMatchObject({ network: "eip155:84532", testnet: true, cardPayments: true });
+    const mainnetChain = await startFakeFacilitator("eip155:8453");
+    const real = await startMarketplace({ facilitatorUrl: mainnetChain.url, network: "eip155:8453" });
+    try {
+      expect(await (await fetch(`${real.url}/health`)).json()).toMatchObject({ testnet: false, cardPayments: false });
+    } finally {
+      await real.close();
+      await mainnetChain.close();
+    }
+  });
+
+  it("offers only top-up amounts inside the marketplace's limits", async () => {
+    const capped = await startMarketplace({
+      facilitatorUrl: chain.url,
+      network: chain.network,
+      topUpLimitsUsd: { min: 5, max: 5 },
+      card: { processor: new StripeProcessor({ secretKey: stripe.secretKey, apiBase: stripe.apiBase }), treasury: new Treasury(treasuryWallet) },
+    });
+    try {
+      const { apiKey } = await AgentClient.createAccount(capped.url);
+      const client = new AgentClient({ baseUrl: capped.url, apiKey });
+      expect((await client.getAccount()).topUpLimitsUsd).toEqual({ min: 5, max: 5 });
+      await expect(client.createTopUp(10)).rejects.toMatchObject({ status: 400, code: "invalid_amount" });
+      expect((await client.createTopUp(5)).topUpId).toBeTruthy();
+    } finally {
+      await capped.close();
+    }
+  });
+
   it("caps how fast new accounts can be opened", async () => {
     const capped = await startMarketplace({ facilitatorUrl: chain.url, network: chain.network, maxNewAccountsPerMinute: 3 });
     try {
@@ -348,6 +378,9 @@ describe("the renter console", () => {
       await page.click("#saved-key-button");
       await expect.poll(() => page.textContent("#credit")).toBe("$0.00");
       expect(await page.textContent("#new-key-value")).toBe("");
+      // On a test network the page says plainly, next to the pay buttons, that the money is real and the payout is not.
+      await expect.poll(() => page.isVisible("#testnet-notice")).toBe(true);
+      expect(await page.textContent("#testnet-notice")).toContain("real money");
 
       // "Add $5" sends the person to the card processor's own page.
       await Promise.all([page.waitForURL(`${stripe.apiBase}/pay/**`), page.click("#top-up-buttons button")]);
