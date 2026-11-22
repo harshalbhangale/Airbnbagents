@@ -80,8 +80,11 @@ AGENT_PRIVATE_KEY=0x... HOST_PAYOUT_ADDRESS=0x... pnpm demo:paid
 ```
 
 The automated tests exercise the real x402 client and server code against a
-local stand-in for the facilitator and chain. A settlement on the real network
-has not been run yet.
+local stand-in for the facilitator and chain. The paid flow has also been run
+once on Base Sepolia through the public facilitator: a $0.02 task settled in
+transaction
+[`0xcaae353d…c18d94`](https://sepolia.basescan.org/tx/0xcaae353d5f53b277e86323d9bbd3d396db1bd89f7f6e50b9877abcc5bdc18d94),
+moving USDC straight from the agent's wallet to the host's.
 
 ## How a task flows
 
