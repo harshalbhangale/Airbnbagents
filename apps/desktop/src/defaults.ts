@@ -1,8 +1,8 @@
 /**
- * Where the desktop app connects when nothing else is configured. These point
- * at the local demo. Once a hosted marketplace exists (see deploy/aws), put
- * its `HostEndpoint` and `DemoSiteUrl` here so the installers work out of the
- * box.
+ * Where the desktop app connects when nothing else is configured: the hosted
+ * demo marketplace and demo site created by deploy/aws. If that stack is
+ * rebuilt with a different address, or replaced by a real domain, update
+ * these with its `HostEndpoint` and `DemoSiteUrl` outputs.
  */
-export const DEFAULT_MARKETPLACE_URL = "ws://127.0.0.1:4200/hosts/connect";
-export const DEFAULT_SITE_ORIGIN = "http://127.0.0.1:4100";
+export const DEFAULT_MARKETPLACE_URL = "wss://market.35-154-72-7.sslip.io/hosts/connect";
+export const DEFAULT_SITE_ORIGIN = "https://meshwork.35-154-72-7.sslip.io";

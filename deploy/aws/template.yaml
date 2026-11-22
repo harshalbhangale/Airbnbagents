@@ -116,8 +116,14 @@ Resources:
             tar -xJf "$NODE_FILE" -C /usr/local --strip-components=1
             corepack enable
 
-            # Caddy terminates HTTPS and gets its own certificates.
-            curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=arm64" -o /usr/local/bin/caddy
+            # Caddy terminates HTTPS and gets its own certificates. Taken from its official release, checked against the published checksums.
+            CADDY_TAG=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/caddyserver/caddy/releases/latest | sed 's#.*/tag/##')
+            CADDY_VER=$(echo "$CADDY_TAG" | sed 's/^v//')
+            CADDY_FILE="caddy_"$CADDY_VER"_linux_arm64.tar.gz"
+            curl -fsSL "https://github.com/caddyserver/caddy/releases/download/$CADDY_TAG/$CADDY_FILE" -o "$CADDY_FILE"
+            curl -fsSL "https://github.com/caddyserver/caddy/releases/download/$CADDY_TAG/caddy_"$CADDY_VER"_checksums.txt" -o caddy-sums.txt
+            grep " $CADDY_FILE\$" caddy-sums.txt | sha512sum -c -
+            tar -xzf "$CADDY_FILE" -C /usr/local/bin caddy
             chmod 755 /usr/local/bin/caddy
             useradd --system --home-dir /var/lib/caddy --create-home --shell /sbin/nologin caddy
             mkdir -p /etc/caddy

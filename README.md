@@ -52,10 +52,12 @@ dashboard, with two differences:
   agentbnb.
 
 Closing the window leaves the host online in the tray; quit from the tray
-menu. By default the app connects to the local demo site and a local
-marketplace. To point it elsewhere, set `AGENTBNB_MARKETPLACE_URL` and
-`AGENTBNB_SITE_ORIGIN`, or put `marketplaceUrl` and `siteOrigin` in
-`config.json` in the app's data folder.
+menu. By default the app connects to the hosted demo marketplace and demo site
+(see "Hosting the marketplace"), so an installed copy works with no local
+set-up. To point it elsewhere, such as at a local marketplace while
+developing, set `AGENTBNB_MARKETPLACE_URL` and `AGENTBNB_SITE_ORIGIN`, or put
+`marketplaceUrl` and `siteOrigin` in `config.json` in the app's data folder.
+The built-in defaults live in `apps/desktop/src/defaults.ts`.
 
 **Installers.** `pnpm desktop:dist` builds an installer for the machine it runs
 on. The "Desktop app" workflow on GitHub builds all three (a `.dmg` for macOS
@@ -71,9 +73,18 @@ The desktop app has its own end-to-end test, which drives the real app:
 
 `deploy/aws` holds a CloudFormation template that runs the marketplace and the
 demo site on one small AWS server behind HTTPS, with a guide to what it
-creates, what it costs and how to give it payment keys. It has been linted and
-its start-up commands have been run locally, but the stack itself has not been
-created yet.
+creates, what it costs and how to give it payment keys.
+
+A demo instance is running from it:
+
+- Marketplace: https://market.35-154-72-7.sslip.io
+- Renter console: https://market.35-154-72-7.sslip.io/console
+- Demo site: https://meshwork.35-154-72-7.sslip.io
+
+It is on the Base Sepolia testnet with crypto payments only, and it is a demo:
+one server, no backups, and addresses that change if the stack is recreated.
+The desktop app has been run against it end to end, with an agent paying for
+tasks through it over the internet.
 
 ## Running as a host
 
