@@ -62,9 +62,11 @@ The built-in defaults live in `apps/desktop/src/defaults.ts`.
 **Installers.** `pnpm desktop:dist` builds an installer for the machine it runs
 on. The "Desktop app" workflow on GitHub builds all three (a `.dmg` for macOS
 on Apple and Intel chips, an `.exe` for Windows, an AppImage for Linux) and
-attaches them to the workflow run as artifacts. They are unsigned, so macOS
-and Windows warn before opening them; signing needs an Apple Developer account
-and a Windows certificate.
+attaches them to the workflow run as artifacts. They are not signed by a
+registered developer, so macOS and Windows warn before opening them; proper
+signing needs an Apple Developer account and a Windows certificate. The macOS
+build is ad-hoc signed, which is the least Apple Silicon Macs require to run
+an app at all.
 
 The desktop app has its own end-to-end test, which drives the real app:
 `xvfb-run -a pnpm test` on Linux, plain `pnpm test` on macOS or Windows.
