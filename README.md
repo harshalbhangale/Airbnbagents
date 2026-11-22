@@ -67,6 +67,14 @@ and a Windows certificate.
 The desktop app has its own end-to-end test, which drives the real app:
 `xvfb-run -a pnpm test` on Linux, plain `pnpm test` on macOS or Windows.
 
+## Hosting the marketplace
+
+`deploy/aws` holds a CloudFormation template that runs the marketplace and the
+demo site on one small AWS server behind HTTPS, with a guide to what it
+creates, what it costs and how to give it payment keys. It has been linted and
+its start-up commands have been run locally, but the stack itself has not been
+created yet.
+
 ## Running as a host
 
 Start the demo site and a marketplace in two terminals (`pnpm demo-site`,

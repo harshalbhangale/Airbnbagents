@@ -48,6 +48,7 @@ beforeAll(async () => {
     facilitatorUrl: chain.url,
     network: chain.network,
     accountsFile,
+    maxNewAccountsPerMinute: 1_000,
     card: { processor: new StripeProcessor({ secretKey: stripe.secretKey, apiBase: stripe.apiBase }), treasury: new Treasury(treasuryWallet) },
   });
   chain.fund(treasuryWallet.address, 10_000_000);
@@ -79,6 +80,17 @@ describe("renter accounts", () => {
       expect(response.status).toBe(401);
     }
     expect((await fetch(`${market.url}/account`)).status).toBe(401);
+  });
+
+  it("caps how fast new accounts can be opened", async () => {
+    const capped = await startMarketplace({ facilitatorUrl: chain.url, network: chain.network, maxNewAccountsPerMinute: 3 });
+    try {
+      const statuses = [];
+      for (let i = 0; i < 5; i++) statuses.push((await fetch(`${capped.url}/accounts`, { method: "POST" })).status);
+      expect(statuses).toEqual([201, 201, 201, 429, 429]);
+    } finally {
+      await capped.close();
+    }
   });
 
   it("never writes an API key to disk", async () => {

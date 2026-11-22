@@ -29,6 +29,8 @@ export interface MarketplaceOptions extends PaymentConfig {
   accountsFile?: string;
   /** Smallest and largest card top-up, in whole dollars. */
   topUpLimitsUsd?: { min: number; max: number };
+  /** Most new renter accounts the marketplace will open in a minute, across everyone. */
+  maxNewAccountsPerMinute?: number;
 }
 
 /** What the marketplace knows about a task: routing, outcome and payment. Never its content. */
@@ -84,6 +86,7 @@ export async function startMarketplace(options: MarketplaceOptions): Promise<Mar
   const tasks: TaskRecord[] = [];
   const inFlightPayments = new Set<string>();
   const accounts = new AccountStore(options.accountsFile);
+  const recentAccounts: number[] = [];
   const card = options.card;
   const limits = options.topUpLimitsUsd ?? { min: 5, max: 500 };
   const consoleFile = (name: string) => readFileSync(new URL(`./console/${name}`, import.meta.url));
@@ -261,6 +264,11 @@ export async function startMarketplace(options: MarketplaceOptions): Promise<Mar
 
   async function accountRoutes(route: string, req: IncomingMessage, res: ServerResponse): Promise<boolean> {
     if (route === "POST /accounts") {
+      // Opening an account is free and needs no sign-in, so it is capped to keep it from being used to fill the disk.
+      const now = Date.now();
+      while (recentAccounts.length && now - recentAccounts[0]! > 60_000) recentAccounts.shift();
+      if (recentAccounts.length >= (options.maxNewAccountsPerMinute ?? 30)) return json(res, 429, { error: "too_many_new_accounts" }), true;
+      recentAccounts.push(now);
       json(res, 201, { ...accounts.create(), cardPayments: Boolean(card) });
       return true;
     }

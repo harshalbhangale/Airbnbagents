@@ -5,6 +5,7 @@ import { app, BrowserWindow, Menu, nativeImage, shell, Tray } from "electron";
 import { HostApp } from "../../worker/src/app.ts";
 import { startDashboard, type Dashboard } from "../../worker/src/dashboard/server.ts";
 import { rpcSettlementVerifier } from "../../worker/src/settlement.ts";
+import { DEFAULT_MARKETPLACE_URL, DEFAULT_SITE_ORIGIN } from "./defaults.ts";
 import { ElectronSiteBrowser } from "./electron-browser.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -28,8 +29,8 @@ function settings(): { marketplaceUrl: string; siteOrigin: string } {
   }
   const pick = (env: string | undefined, saved: unknown, fallback: string) => env || (typeof saved === "string" && saved ? saved : fallback);
   return {
-    marketplaceUrl: pick(process.env.AGENTBNB_MARKETPLACE_URL, file.marketplaceUrl, "ws://127.0.0.1:4200/hosts/connect"),
-    siteOrigin: pick(process.env.AGENTBNB_SITE_ORIGIN, file.siteOrigin, "http://127.0.0.1:4100"),
+    marketplaceUrl: pick(process.env.AGENTBNB_MARKETPLACE_URL, file.marketplaceUrl, DEFAULT_MARKETPLACE_URL),
+    siteOrigin: pick(process.env.AGENTBNB_SITE_ORIGIN, file.siteOrigin, DEFAULT_SITE_ORIGIN),
   };
 }
 
