@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>agentbnb host</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>agentbnb host</h1>
+      <p class="muted" id="worker-id"></p>
+    </div>
+    <div class="top-actions">
+      <span class="pill" id="status-pill" role="status">Loading</span>
+      <button type="button" id="pause-button" class="danger">Pause everything</button>
+    </div>
+  </header>
+
+  <p class="banner" id="banner" role="alert" hidden></p>
+
+  <main>
+    <section class="grid" aria-label="Setup">
+      <article class="card" id="account-card">
+        <h2>Rented account</h2>
+        <p id="account-status"></p>
+        <p class="muted" id="account-site"></p>
+        <form id="sign-in-form" hidden>
+          <label>Email <input name="email" type="email" autocomplete="off" required></label>
+          <label>Password <input name="password" type="password" autocomplete="off" required></label>
+          <button type="submit">Sign in</button>
+          <p class="muted small">Typed into the site's own sign-in page inside the separate browser profile. Not saved.</p>
+        </form>
+        <button type="button" id="recheck-button" class="quiet">Check again</button>
+      </article>
+
+      <article class="card">
+        <h2>Getting paid</h2>
+        <form id="payout-form">
+          <label>Payout address
+            <input name="address" id="payout-input" inputmode="text" spellcheck="false" autocomplete="off" placeholder="0x…" pattern="0x[0-9a-fA-F]{40}" required>
+          </label>
+          <button type="submit">Save</button>
+        </form>
+        <p class="muted small">Agents pay this address directly in USDC when a task completes.</p>
+      </article>
+
+      <article class="card">
+        <h2>Earnings</h2>
+        <p class="figure" id="earnings-total">$0.00</p>
+        <p class="muted" id="earnings-count"></p>
+        <p class="muted small" id="marketplace-status"></p>
+      </article>
+    </section>
+
+    <section aria-labelledby="rules-heading">
+      <h2 id="rules-heading">What agents can do</h2>
+      <p class="muted">Anything not ticked here is never returned. Changes apply to the next task.</p>
+      <div id="capabilities"></div>
+    </section>
+
+    <section aria-labelledby="activity-heading">
+      <h2 id="activity-heading">Activity</h2>
+      <p class="muted" id="activity-summary"></p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th scope="col">Time</th><th scope="col">Request</th><th scope="col">Outcome</th><th scope="col">Returned</th></tr></thead>
+          <tbody id="activity-rows"></tbody>
+        </table>
+      </div>
+      <p class="muted" id="activity-empty">No tasks yet.</p>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

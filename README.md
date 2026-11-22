@@ -3,9 +3,9 @@
 A marketplace where people rent narrow, permission-controlled capabilities of
 their own signed-in browser sessions to AI agents, and get paid per task.
 
-What is built: the host worker and its privacy layer, the marketplace server
-with an x402 paywall, the agent SDK, and pricing. Not built yet: the host
-dashboard and installer, the MCP server, the onchain commitment contract,
+What is built: the host worker and its privacy layer, the host dashboard, the
+marketplace server with an x402 paywall, the agent SDK, and pricing. Not built
+yet: the desktop installer, the MCP server, the onchain commitment contract,
 hourly browser sessions and the platform fee split.
 
 ## Run it
@@ -19,6 +19,7 @@ pnpm test                         # unit tests plus an end-to-end run in a real 
 pnpm demo                         # the host-side flow, no payment, narrated in the terminal
 pnpm demo:paid                    # the full paid flow on Base Sepolia (see below)
 pnpm marketplace                  # just the marketplace server, on http://127.0.0.1:4200
+pnpm host                         # the host app: worker plus dashboard (see below)
 pnpm demo-site                    # just the demo site, on http://127.0.0.1:4100
 ```
 
@@ -34,6 +35,24 @@ pnpm demo-site                    # just the demo site, on http://127.0.0.1:4100
 | `apps/worker` | The host worker: an isolated browser profile with a network guard, plus the fixed task code |
 | `apps/demo-site` | Meshwork, a made-up professional network with profiles and a private inbox |
 | `scripts/demo.ts` | A stand-in agent driving the worker through allowed, denied and hostile requests |
+
+## Running as a host
+
+Start the demo site and a marketplace in two terminals (`pnpm demo-site`,
+`pnpm marketplace`), then `pnpm host`. It prints a one-time link to the
+dashboard, where the host signs the rented account in, enters a payout
+address, chooses which fields agents may receive, sets a price, watches
+activity and earnings, and can pause everything with one button. The worker is
+listed on the marketplace once it has a payout address.
+
+The dashboard can change privacy rules, so it only listens on the local
+machine, needs the one-time link, answers only to its own address (which
+defeats DNS rebinding) and checks the origin of every change (which defeats
+requests forged by other pages in the same browser). Signing in currently
+means typing the account's details into the dashboard, which passes them to
+the site's own sign-in page inside the separate browser profile and does not
+keep them. A window the host signs in to directly will replace that with the
+desktop app.
 
 ## Plans
 

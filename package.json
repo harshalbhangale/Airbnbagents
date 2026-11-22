@@ -12,7 +12,8 @@
     "demo-site": "tsx apps/demo-site/src/main.ts",
     "demo": "tsx scripts/demo.ts",
     "marketplace": "tsx apps/server/src/main.ts",
-    "demo:paid": "tsx scripts/paid-demo.ts"
+    "demo:paid": "tsx scripts/paid-demo.ts",
+    "host": "tsx apps/worker/src/main.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
